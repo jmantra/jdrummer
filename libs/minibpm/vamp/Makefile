@@ -1,0 +1,18 @@
+
+PLUGIN_EXT	:= .so
+PLUGIN_LDFLAGS	:= -shared
+
+VAMP_TARGET	:= vamp-minibpm$(PLUGIN_EXT)
+VAMP_SOURCES	:= libmain.cpp MiniBpmVamp.cpp
+MINIBPM_SOURCES	:= ../src/MiniBpm.cpp
+MINIBPM_HEADERS	:= ../src/MiniBpm.h
+
+CXXFLAGS	:= -std=c++98 -I../src -fPIC
+
+VAMP_LDFLAGS	:= $(LDFLAGS) $(PLUGIN_LDFLAGS) -lvamp-sdk
+
+all: $(VAMP_TARGET)
+
+$(VAMP_TARGET): $(VAMP_SOURCES) $(MINIBPM_SOURCES) $(MINIBPM_HEADERS)
+	$(CXX) $(CXXFLAGS) -o $@ $(VAMP_SOURCES) $(MINIBPM_SOURCES) $(VAMP_LDFLAGS)
+
