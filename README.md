@@ -288,9 +288,7 @@ JDrummer uses the following open-source libraries:
 
 JDrummer has been tested with:
 - Ardour (Linux)
-- REAPER (Linux, Windows)
-- Bitwig Studio (Linux)
-- Other VST3-compatible DAWs should work
+- REAPER (Linux)
 
 ## Troubleshooting
 
