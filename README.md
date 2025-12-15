@@ -351,5 +351,5 @@ This project is open source. See LICENSE file for details.
 - Thanks to the JUCE team for their excellent framework
 - TinySoundFont by Bernhard Schelling
 - minibpm by Breakfast Quay
-- All the SoundFont and MIDI groove creators
+- All the SoundFont and MIDI groove creators (MIDI Grooves provided by  **[TheDrumJockey](https://youtu.be/tZzl3xBaBW8?si=pIdaIxch_DVNYvuw)**
 
