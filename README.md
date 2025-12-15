@@ -290,13 +290,6 @@ JDrummer has been tested with:
 - Ardour (Linux)
 - REAPER (Linux)
 
-## Troubleshooting
-
-### Plugin not appearing in DAW
-1. Ensure the VST3 is in the correct directory
-2. Rescan plugins in your DAW
-3. Check that the Resources folder contains soundfonts and Grooves
-
 ### No sound from drum pads
 1. Check that a SoundFont kit is selected
 2. Verify pad volumes are not at 0%
