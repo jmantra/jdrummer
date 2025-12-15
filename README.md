@@ -79,6 +79,7 @@ An intelligent feature inspired by professional drum software that helps you fin
 - **Seamless workflow** - Found the perfect match? Drag it straight to your DAW
 
 ## Installation
+Binary VST3 for Linux and Windows available on the **[Releases](https://github.com/jmantra/jdrummer/releases)** page.
 
 ### Linux
 Copy the VST3 bundle to your VST3 directory:
