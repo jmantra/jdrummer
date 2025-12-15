@@ -325,4 +325,4 @@ This project is open source. See LICENSE file for details.
 - TinySoundFont by Bernhard Schelling
 - minibpm by Breakfast Quay
 - All the SoundFont and MIDI groove creators
-- Grooves by TheDrumJockey www.youtube.com/user/thedrumjockey
+- Grooves by TheDrumJockey https://youtu.be/tZzl3xBaBW8?si=ckBNnRJRLvMQM3y0
