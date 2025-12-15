@@ -1,6 +1,6 @@
 # JDrummer
 
-A powerful, open-source drum machine VST3 plugin built with the JUCE framework. JDrummer features SoundFont-based drum kits, a comprehensive groove library with tempo-synced playback, a composition tool, and an intelligent Groove Matcher that analyzes audio to find matching drum patterns.
+An open-source drum machine VST3 plugin built with the JUCE framework for Linux and Windows. JDrummer features SoundFont-based drum kits, a comprehensive groove library with tempo-synced playback, a composition tool, and an intelligent Groove Matcher that analyzes audio to find matching drum patterns.This plugin is meant to replicate some of the functionality of EZdrummer 3.
 
 ![JDrummer](https://img.shields.io/badge/Format-VST3-blue) ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-green) ![License](https://img.shields.io/badge/License-Open%20Source-orange)
 
