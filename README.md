@@ -312,10 +312,10 @@ JDrummer uses the following open-source libraries:
 ## Tested DAWs
 
 JDrummer has been tested with:
-- Ardour (Linux)
+- Ardour (Linux, Windows)
 - REAPER (Linux, Windows)
-- Bitwig Studio (Linux)
-- Other VST3-compatible DAWs should work
+- Bitwig Studio (Linux) - Drag and Drop does not currently work Bitwig Flatpak 5.3
+- Plugin crashes when trying to load in Qtractor
 
 ## Troubleshooting
 
