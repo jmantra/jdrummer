@@ -119,7 +119,7 @@ sudo pacman -S libxrandr libxrender webkit2gtk glu mesa curl
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/jdrummer.git
+   git clone https://github.com/jmantra/jdrummer.git
    cd jdrummer
    ```
 
@@ -147,7 +147,7 @@ sudo pacman -S libxrandr libxrender webkit2gtk glu mesa curl
 
 1. **Clone the repository**
    ```powershell
-   git clone https://github.com/yourusername/jdrummer.git
+   git clone https://github.com/jmantra/jdrummer.git
    cd jdrummer
    ```
 
