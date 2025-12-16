@@ -11,7 +11,7 @@ A powerful, open-source drum machine VST3 plugin built with the JUCE framework. 
   - [Grooves Browser](#-grooves-browser)
   - [Composer](#-composer)
   - [Groove Matcher](#-groove-matcher)
-  - [Screenshots](#-Screenshots)
+  - [Screenshots](#Screenshots)
 - [Installation](#installation)
   - [Linux](#linux)
   - [Windows](#windows)
