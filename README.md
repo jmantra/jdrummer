@@ -11,6 +11,7 @@ A powerful, open-source drum machine VST3 plugin built with the JUCE framework. 
   - [Grooves Browser](#-grooves-browser)
   - [Composer](#-composer)
   - [Groove Matcher](#-groove-matcher)
+  - [Screenshots](#-Screenshots)
 - [Installation](#installation)
   - [Linux](#linux)
   - [Windows](#windows)
@@ -77,6 +78,13 @@ An intelligent feature inspired by professional drum software that helps you fin
 - **Preview with audio** - Play back the matched groove alongside your original audio
 - **Automatic composition** - Best match is automatically added to the composer
 - **Seamless workflow** - Found the perfect match? Drag it straight to your DAW
+
+### Screenshots
+Drum Kits Tab
+![Screenshot](https://i.postimg.cc/qMnR82Ds/jdrummer-kits.png)
+
+
+
 
 ## Installation
 Binary VST3 for Linux and Windows available on the **[Releases](https://github.com/jmantra/jdrummer/releases)** page.
