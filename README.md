@@ -83,6 +83,13 @@ An intelligent feature inspired by professional drum software that helps you fin
 Drum Kits Tab
 ![Screenshot](https://i.postimg.cc/qMnR82Ds/jdrummer-kits.png)
 
+Grooves Tab
+![Screenshot](https://i.postimg.cc/ZqJCY0L1/jdrummergrooves.png)
+
+Groove Matcher Tab
+
+![Screenshot](https://i.postimg.cc/t4BYTpmv/jdrummermmatch.png)
+
 
 
 
