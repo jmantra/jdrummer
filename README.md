@@ -40,8 +40,8 @@ A powerful, open-source drum machine VST3 plugin built with the JUCE framework. 
   - Specialty kits (Orchestral Percussion, Brush Drums, NIN Drumkit)
 - **Per-pad controls**:
   - Individual volume adjustment (0-100%)
-  - Pan control (left/right)
-  - Solo and mute options
+- ~~Pan control (left/right)~~ _(planned for a future release)_
+- ~~Solo and mute options~~ _(planned for a future release)_
 - **Dynamic kit loading** - Add your own .sf2 SoundFont files to expand your library
 
 ### 🎵 Grooves Browser
