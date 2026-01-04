@@ -4,6 +4,8 @@ An open-source drum machine VST3 plugin built with the JUCE framework. JDrummer 
 
 ![JDrummer](https://img.shields.io/badge/Format-VST3%20%7C%20AU-blue) ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-green) ![License](https://img.shields.io/badge/License-Open%20Source-orange)
 
+Youtube overview: https://youtu.be/mbGQnUJ8rxg?si=QsWpq8BCVJYmjcz9
+
 ## Table of Contents
 
 - [Features](#features)
