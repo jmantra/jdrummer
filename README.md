@@ -42,7 +42,7 @@ An open-source drum machine VST3 plugin built with the JUCE framework. JDrummer 
   - Specialty kits (Orchestral Percussion, Brush Drums, NIN Drumkit)
 - **Per-pad controls**:
   - Individual volume adjustment (0-100%)
-- Pan control (left/right)
+- Pan control (left/right) (Panning is currently backward, see issue 10: https://github.com/jmantra/jdrummer/issues/10
 - Solo and mute options
 - **Dynamic kit loading** - Add your own .sf2 SoundFont files to expand your library
 - **Multi Out Support** - Fan each drum pience to an individual track for mixing
