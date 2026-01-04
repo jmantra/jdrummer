@@ -7,9 +7,11 @@
 
 #include "BandmatePanel.h"
 #include "../PluginProcessor.h"
+#include <cmath>
 
 BandmatePanel::BandmatePanel()
-    : matchesListModel(*this)
+    : matchesListBox(*this),
+      matchesListModel(*this)
 {
     
     // Title
@@ -30,14 +32,26 @@ BandmatePanel::BandmatePanel()
     browseButton.setButtonText("Browse...");
     browseButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
     browseButton.setColour(juce::TextButton::textColourOffId, textColour);
+    browseButton.setTooltip("Browse for audio file.\nTip: Press Ctrl+H to show hidden files.");
     browseButton.onClick = [this]() {
-        auto chooser = std::make_shared<juce::FileChooser>(
-            "Select an audio file",
-            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
-            "*.wav;*.mp3;*.aiff;*.flac;*.ogg");
+        // Store the chooser as a member to prevent it from being destroyed before callback
+        // On Linux plugins, native file dialogs often fail, so we force non-native mode
+        #if JUCE_LINUX
+        constexpr bool useNativeDialog = false;  // Force JUCE's built-in browser on Linux
+        #else
+        constexpr bool useNativeDialog = true;
+        #endif
         
-        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-            [this, chooser](const juce::FileChooser& fc) {
+        fileChooser = std::make_unique<juce::FileChooser>(
+            "Select an audio file (Ctrl+H for hidden files)",
+            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+            "*.wav;*.mp3;*.aiff;*.flac;*.ogg",
+            useNativeDialog);
+        
+        auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
+        
+        fileChooser->launchAsync(flags,
+            [this](const juce::FileChooser& fc) {
                 auto results = fc.getResults();
                 if (!results.isEmpty())
                 {
@@ -65,7 +79,9 @@ BandmatePanel::BandmatePanel()
         matchResults.clear();
         matchesListBox.updateContent();
         fileNameLabel.setText("", juce::dontSendNotification);
-        tempoLabel.setText("", juce::dontSendNotification);
+        tempoComboBox.clear();
+        customBpmEditor.clear();
+        selectedBpm = 0.0;
         statusLabel.setText("", juce::dontSendNotification);
         analyzeButton.setEnabled(false);
         loadedAudioFile = juce::File();
@@ -80,11 +96,28 @@ BandmatePanel::BandmatePanel()
     fileNameLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(fileNameLabel);
     
-    // Tempo label
-    tempoLabel.setFont(juce::Font(24.0f, juce::Font::bold));
-    tempoLabel.setColour(juce::Label::textColourId, accentColour);
-    tempoLabel.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(tempoLabel);
+    // Tempo ComboBox (for selecting detected/alternative tempos)
+    tempoComboBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xFF2A2A4A));
+    tempoComboBox.setColour(juce::ComboBox::textColourId, accentColour);
+    tempoComboBox.setColour(juce::ComboBox::outlineColourId, accentColour.withAlpha(0.5f));
+    tempoComboBox.onChange = [this]() { updateTempoSelection(); };
+    addAndMakeVisible(tempoComboBox);
+    
+    // Custom BPM text editor
+    customBpmEditor.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF2A2A4A));
+    customBpmEditor.setColour(juce::TextEditor::textColourId, textColour);
+    customBpmEditor.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xFF444444));
+    customBpmEditor.setJustification(juce::Justification::centred);
+    customBpmEditor.setInputRestrictions(6, "0123456789.");
+    customBpmEditor.setTooltip("Enter custom BPM (30-300)");
+    addAndMakeVisible(customBpmEditor);
+    
+    // Use custom BPM button
+    useCustomBpmButton.setButtonText("Use");
+    useCustomBpmButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A5A2A));
+    useCustomBpmButton.setColour(juce::TextButton::textColourOffId, textColour);
+    useCustomBpmButton.onClick = [this]() { applyCustomBpm(); };
+    addAndMakeVisible(useCustomBpmButton);
     
     // Status label
     statusLabel.setFont(juce::Font(11.0f));
@@ -122,6 +155,19 @@ BandmatePanel::BandmatePanel()
     stopButton.setColour(juce::TextButton::textColourOffId, textColour);
     stopButton.onClick = [this]() { stopPlayback(); };
     addAndMakeVisible(stopButton);
+    
+    // Sub-tab buttons (Matches vs All Grooves)
+    matchesTabButton.setButtonText("Matches");
+    matchesTabButton.setColour(juce::TextButton::buttonColourId, accentColour);
+    matchesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFFFFFFF));
+    matchesTabButton.onClick = [this]() { showSubTab(0); };
+    addAndMakeVisible(matchesTabButton);
+    
+    allGroovesTabButton.setButtonText("All Grooves");
+    allGroovesTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
+    allGroovesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
+    allGroovesTabButton.onClick = [this]() { showSubTab(1); };
+    addAndMakeVisible(allGroovesTabButton);
     
     // Matches label
     matchesLabel.setText("MATCHING GROOVES", juce::dontSendNotification);
@@ -162,6 +208,34 @@ BandmatePanel::BandmatePanel()
     addToComposerButton.onClick = [this]() { addSelectedMatchToComposer(); };
     addAndMakeVisible(addToComposerButton);
     
+    // All Grooves browser (hidden by default, shown when "All Grooves" tab is selected)
+    allGroovesBrowser.setVisible(false);
+    allGroovesBrowser.onGrooveAddToComposer = [this](int categoryIndex, int grooveIndex, int barCount) {
+        if (grooveManager != nullptr)
+        {
+            grooveManager->addToComposer(categoryIndex, grooveIndex, barCount);
+            grooveComposer.refresh();
+        }
+    };
+    allGroovesBrowser.onGrooveDoubleClicked = [this](int categoryIndex, int grooveIndex) {
+        // Preview the groove on double-click
+        if (grooveManager != nullptr)
+        {
+            double bpm = getSelectedBPM();
+            if (bpm > 0)
+            {
+                grooveManager->setPreviewBPM(bpm);
+            }
+            grooveManager->setLooping(true);
+            grooveManager->startPlayback(categoryIndex, grooveIndex);
+        }
+    };
+    allGroovesBrowser.onGrooveDragStarted = [this](int categoryIndex, int grooveIndex) {
+        // Handle drag through BandmatePanel's DragAndDropContainer
+        startGrooveBrowserDrag(categoryIndex, grooveIndex);
+    };
+    addAndMakeVisible(allGroovesBrowser);
+    
     // Composer
     addAndMakeVisible(grooveComposer);
     
@@ -169,6 +243,13 @@ BandmatePanel::BandmatePanel()
     grooveComposer.onPlayClicked = [this]() {
         if (grooveManager != nullptr)
         {
+            // Set the selected BPM before starting composer playback
+            double bpm = getSelectedBPM();
+            if (bpm > 0)
+            {
+                grooveManager->setPreviewBPM(bpm);
+            }
+            
             grooveManager->startComposerPlayback();
             grooveComposer.setPlaying(true);
         }
@@ -265,7 +346,9 @@ void BandmatePanel::resized()
         browseButton.setVisible(false);
         clearButton.setVisible(true);
         fileNameLabel.setVisible(true);
-        tempoLabel.setVisible(true);
+        tempoComboBox.setVisible(true);
+        customBpmEditor.setVisible(true);
+        useCustomBpmButton.setVisible(true);
         statusLabel.setVisible(true);
         
         auto topRow = dropContent.removeFromTop(22);
@@ -274,8 +357,14 @@ void BandmatePanel::resized()
         
         dropContent.removeFromTop(3);
         
+        // Tempo row: ComboBox + custom BPM editor + Use button
         auto tempoRow = dropContent.removeFromTop(28);
-        tempoLabel.setBounds(tempoRow);
+        auto tempoRowCentered = tempoRow.withSizeKeepingCentre(280, 26);
+        tempoComboBox.setBounds(tempoRowCentered.removeFromLeft(140));
+        tempoRowCentered.removeFromLeft(5);
+        customBpmEditor.setBounds(tempoRowCentered.removeFromLeft(60));
+        tempoRowCentered.removeFromLeft(5);
+        useCustomBpmButton.setBounds(tempoRowCentered.removeFromLeft(50));
         
         auto statusRow = dropContent.removeFromTop(18);
         statusLabel.setBounds(statusRow);
@@ -303,7 +392,9 @@ void BandmatePanel::resized()
         browseButton.setVisible(true);
         clearButton.setVisible(false);
         fileNameLabel.setVisible(false);
-        tempoLabel.setVisible(false);
+        tempoComboBox.setVisible(false);
+        customBpmEditor.setVisible(false);
+        useCustomBpmButton.setVisible(false);
         statusLabel.setVisible(false);
         analyzeButton.setVisible(false);
         progressBar->setVisible(false);
@@ -328,23 +419,54 @@ void BandmatePanel::resized()
     
     bounds.removeFromTop(8);
     
-    // Split remaining space between matches list and composer
-    auto matchesArea = bounds.removeFromTop(bounds.getHeight() - 85);
+    // Sub-tab buttons row (Matches / All Grooves)
+    auto subTabRow = bounds.removeFromTop(28);
+    matchesTabButton.setBounds(subTabRow.removeFromLeft(100));
+    subTabRow.removeFromLeft(5);
+    allGroovesTabButton.setBounds(subTabRow.removeFromLeft(100));
     
-    // Matches section
-    matchesLabel.setBounds(matchesArea.removeFromTop(20));
-    matchesArea.removeFromTop(5);
+    bounds.removeFromTop(8);
     
-    // Bottom row of matches area: bar count and add button
-    auto matchesBottom = matchesArea.removeFromBottom(28);
-    barCountLabel.setBounds(matchesBottom.removeFromLeft(35));
-    matchesBottom.removeFromLeft(5);
-    barCountComboBox.setBounds(matchesBottom.removeFromLeft(70));
-    matchesBottom.removeFromLeft(10);
-    addToComposerButton.setBounds(matchesBottom.removeFromLeft(140));
+    // Split remaining space between content area and composer
+    auto contentArea = bounds.removeFromTop(bounds.getHeight() - 85);
     
-    matchesArea.removeFromBottom(5);
-    matchesListBox.setBounds(matchesArea);
+    if (currentSubTab == 0)
+    {
+        // Show Matches view
+        matchesLabel.setVisible(true);
+        matchesListBox.setVisible(true);
+        barCountLabel.setVisible(true);
+        barCountComboBox.setVisible(true);
+        addToComposerButton.setVisible(true);
+        allGroovesBrowser.setVisible(false);
+        
+        // Matches section
+        matchesLabel.setBounds(contentArea.removeFromTop(20));
+        contentArea.removeFromTop(5);
+        
+        // Bottom row of matches area: bar count and add button
+        auto matchesBottom = contentArea.removeFromBottom(28);
+        barCountLabel.setBounds(matchesBottom.removeFromLeft(35));
+        matchesBottom.removeFromLeft(5);
+        barCountComboBox.setBounds(matchesBottom.removeFromLeft(70));
+        matchesBottom.removeFromLeft(10);
+        addToComposerButton.setBounds(matchesBottom.removeFromLeft(140));
+        
+        contentArea.removeFromBottom(5);
+        matchesListBox.setBounds(contentArea);
+    }
+    else
+    {
+        // Show All Grooves view
+        matchesLabel.setVisible(false);
+        matchesListBox.setVisible(false);
+        barCountLabel.setVisible(false);
+        barCountComboBox.setVisible(false);
+        addToComposerButton.setVisible(false);
+        allGroovesBrowser.setVisible(true);
+        
+        allGroovesBrowser.setBounds(contentArea);
+    }
     
     bounds.removeFromTop(8);
     
@@ -361,6 +483,7 @@ void BandmatePanel::setGrooveManager(GrooveManager* manager)
 {
     grooveManager = manager;
     grooveComposer.setGrooveManager(manager);
+    allGroovesBrowser.setGrooveManager(manager);
 }
 
 bool BandmatePanel::isInterestedInFileDrag(const juce::StringArray& files)
@@ -420,7 +543,9 @@ void BandmatePanel::loadAudioFile(const juce::File& file)
     {
         loadedAudioFile = file;
         fileNameLabel.setText(audioAnalyzer.getLoadedFileName(), juce::dontSendNotification);
-        tempoLabel.setText("", juce::dontSendNotification);
+        tempoComboBox.clear();
+        customBpmEditor.clear();
+        selectedBpm = 0.0;
         statusLabel.setText(juce::String(audioAnalyzer.getAudioLengthSeconds(), 1) + " seconds", 
                            juce::dontSendNotification);
         analyzeButton.setEnabled(true);
@@ -456,16 +581,29 @@ void BandmatePanel::startAnalysis()
     // Start timer to update progress
     startTimerHz(30);
     
-    // Run analysis in background thread
-    juce::Thread::launch([this]() {
+    // Capture the groove manager pointer for use in background thread
+    GrooveManager* gm = grooveManager;
+    
+    // Run analysis AND groove matching in background thread
+    // This prevents UI blocking from heavy I/O (loading all MIDI files)
+    juce::Thread::launch([this, gm]() {
         bool success = audioAnalyzer.analyzeAudio();
         
-        juce::MessageManager::callAsync([this, success]() {
+        // Also find matching grooves in the background thread (heavy I/O)
+        std::vector<GrooveMatch> matches;
+        if (success && gm != nullptr)
+        {
+            matches = audioAnalyzer.findMatchingGrooves(*gm, 15);
+        }
+        
+        juce::MessageManager::callAsync([this, success, matches = std::move(matches)]() mutable {
             stopTimer();
             isAnalyzing = false;
             
             if (success)
             {
+                // Store the matches computed in background thread
+                matchResults = std::move(matches);
                 onAnalysisComplete();
             }
             else
@@ -481,34 +619,69 @@ void BandmatePanel::startAnalysis()
 
 void BandmatePanel::timerCallback()
 {
-    progressValue = audioAnalyzer.getAnalysisProgress() / 100.0;
-    repaint();
+    if (isAnalyzing)
+    {
+        // Update progress bar during analysis
+        progressValue = audioAnalyzer.getAnalysisProgress() / 100.0;
+        repaint();
+    }
+    else if (isPlayingAudio || isPlayingGroove)
+    {
+        // Repaint for playback indicator
+        repaint();
+    }
+    else
+    {
+        // Nothing active - stop the timer to save CPU
+        stopTimer();
+    }
 }
 
 void BandmatePanel::onAnalysisComplete()
 {
     const auto& pattern = audioAnalyzer.getDetectedPattern();
     
-    // Update tempo display
-    tempoLabel.setText(juce::String(pattern.bpm, 3) + " BPM", juce::dontSendNotification);
+    // Populate tempo ComboBox with detected and alternative tempos
+    tempoComboBox.clear();
+    int itemId = 1;
+    
+    // Add primary detected tempo (first item, will be default selected)
+    tempoComboBox.addItem(juce::String(pattern.bpm, 1) + " BPM (detected)", itemId++);
+    
+    // Add alternative tempos from candidates (skip first one since it's the primary)
+    const auto& alternatives = pattern.alternativeBpms;
+    for (size_t i = 1; i < alternatives.size(); ++i)
+    {
+        double altBpm = alternatives[i];
+        // Only add if significantly different from primary (> 5 BPM difference)
+        if (std::abs(altBpm - pattern.bpm) > 5.0)
+        {
+            tempoComboBox.addItem(juce::String(altBpm, 1) + " BPM", itemId++);
+        }
+    }
+    
+    // Add "Custom..." option at the end
+    tempoComboBox.addItem("Custom...", 100);
+    
+    // Select the primary tempo by default
+    tempoComboBox.setSelectedId(1);
+    selectedBpm = pattern.bpm;
+    
     statusLabel.setText(juce::String(pattern.onsetTimesBeats.size()) + " beats detected", 
                        juce::dontSendNotification);
     
-    // Find matching grooves
-    if (grooveManager != nullptr)
+    // matchResults was already populated in background thread (startAnalysis)
+    // Just update the UI here
+    matchesListBox.updateContent();
+    
+    if (!matchResults.empty())
     {
-        matchResults = audioAnalyzer.findMatchingGrooves(*grooveManager, 15);
-        matchesListBox.updateContent();
+        // Select the best match
+        matchesListBox.selectRow(0);
+        selectedMatchIndex = 0;
         
-        if (!matchResults.empty())
-        {
-            // Select the best match
-            matchesListBox.selectRow(0);
-            selectedMatchIndex = 0;
-            
-            // Auto-add the best match to the composer
-            addSelectedMatchToComposer();
-        }
+        // Auto-add the best match to the composer
+        addSelectedMatchToComposer();
     }
 }
 
@@ -547,11 +720,11 @@ void BandmatePanel::playBoth()
     
     stopPlayback();
     
-    // Set the detected BPM for groove playback
-    const auto& pattern = audioAnalyzer.getDetectedPattern();
-    if (pattern.bpm > 0)
+    // Set the selected BPM for groove playback (may be detected, alternative, or custom)
+    double bpm = getSelectedBPM();
+    if (bpm > 0)
     {
-        grooveManager->setPreviewBPM(pattern.bpm);
+        grooveManager->setPreviewBPM(bpm);
     }
     
     // Start audio playback through processor
@@ -563,9 +736,18 @@ void BandmatePanel::playBoth()
         isPlayingAudio = true;
     }
     
-    // Start groove playback
-    if (selectedMatchIndex >= 0 && selectedMatchIndex < static_cast<int>(matchResults.size()))
+    // If composer has items, play the composer; otherwise play the selected match
+    const auto& composerItems = grooveManager->getComposerItems();
+    if (!composerItems.empty())
     {
+        // Play composer content at the selected BPM
+        grooveManager->startComposerPlayback();
+        grooveComposer.setPlaying(true);
+        isPlayingGroove = true;
+    }
+    else if (selectedMatchIndex >= 0 && selectedMatchIndex < static_cast<int>(matchResults.size()))
+    {
+        // Fall back to playing the selected match
         const auto& match = matchResults[static_cast<size_t>(selectedMatchIndex)];
         grooveManager->setLooping(true);
         grooveManager->startPlayback(match.categoryIndex, match.grooveIndex);
@@ -602,15 +784,26 @@ void BandmatePanel::playGrooveOnly()
     
     stopPlayback();
     
-    // Set the detected BPM for groove playback
-    const auto& pattern = audioAnalyzer.getDetectedPattern();
-    if (pattern.bpm > 0)
+    // Set the selected BPM for groove playback (may be detected, alternative, or custom)
+    double bpm = getSelectedBPM();
+    if (bpm > 0)
     {
-        grooveManager->setPreviewBPM(pattern.bpm);
+        grooveManager->setPreviewBPM(bpm);
     }
     
-    if (selectedMatchIndex >= 0 && selectedMatchIndex < static_cast<int>(matchResults.size()))
+    // If composer has items, play the composer; otherwise play the selected match
+    const auto& composerItems = grooveManager->getComposerItems();
+    if (!composerItems.empty())
     {
+        // Play composer content at the selected BPM
+        grooveManager->startComposerPlayback();
+        grooveComposer.setPlaying(true);
+        isPlayingGroove = true;
+        startTimerHz(30);
+    }
+    else if (selectedMatchIndex >= 0 && selectedMatchIndex < static_cast<int>(matchResults.size()))
+    {
+        // Fall back to playing the selected match
         const auto& match = matchResults[static_cast<size_t>(selectedMatchIndex)];
         grooveManager->setLooping(true);
         grooveManager->startPlayback(match.categoryIndex, match.grooveIndex);
@@ -623,6 +816,9 @@ void BandmatePanel::playGrooveOnly()
 
 void BandmatePanel::stopPlayback()
 {
+    // Stop the repaint timer to save CPU
+    stopTimer();
+    
     if (audioProcessor != nullptr)
     {
         audioProcessor->stopPreviewPlayback();
@@ -631,12 +827,257 @@ void BandmatePanel::stopPlayback()
     
     if (grooveManager != nullptr)
     {
-        grooveManager->stopPlayback();
-        grooveManager->useDAWTiming();  // Reset to DAW timing after preview
+        grooveManager->stopPlayback();          // Stop single groove playback
+        grooveManager->stopComposerPlayback();  // Stop composer playback
+        grooveManager->useDAWTiming();          // Reset to DAW timing after preview
     }
+    grooveComposer.setPlaying(false);  // Update composer UI state
     isPlayingGroove = false;
     
     repaint();
+}
+
+double BandmatePanel::getSelectedBPM() const
+{
+    // Return the currently selected BPM (either from combo box or custom input)
+    if (selectedBpm > 0.0)
+        return selectedBpm;
+    
+    // Fall back to detected pattern BPM
+    return audioAnalyzer.getDetectedPattern().bpm;
+}
+
+void BandmatePanel::updateTempoSelection()
+{
+    int selectedId = tempoComboBox.getSelectedId();
+    
+    if (selectedId == 100)
+    {
+        // "Custom..." selected - highlight the custom BPM editor
+        customBpmEditor.grabKeyboardFocus();
+        return;
+    }
+    
+    // Get the BPM from the selected item text
+    juce::String selectedText = tempoComboBox.getText();
+    
+    // Parse the BPM value from the text (format: "XXX.X BPM" or "XXX.X BPM (detected)")
+    int bpmEndIdx = selectedText.indexOf(" BPM");
+    if (bpmEndIdx > 0)
+    {
+        juce::String bpmStr = selectedText.substring(0, bpmEndIdx);
+        selectedBpm = bpmStr.getDoubleValue();
+        DBG("BandmatePanel: Selected tempo: " + juce::String(selectedBpm, 1) + " BPM");
+    }
+}
+
+void BandmatePanel::applyCustomBpm()
+{
+    juce::String customText = customBpmEditor.getText().trim();
+    
+    if (customText.isEmpty())
+    {
+        statusLabel.setText("Enter a BPM value", juce::dontSendNotification);
+        return;
+    }
+    
+    double customBpm = customText.getDoubleValue();
+    
+    // Validate the custom BPM (reasonable range: 30-300)
+    if (customBpm < 30.0 || customBpm > 300.0)
+    {
+        statusLabel.setText("BPM must be between 30-300", juce::dontSendNotification);
+        return;
+    }
+    
+    selectedBpm = customBpm;
+    
+    // Add custom BPM to the combo box if not already present
+    bool found = false;
+    for (int i = 0; i < tempoComboBox.getNumItems(); ++i)
+    {
+        if (tempoComboBox.getItemText(i).startsWith(juce::String(customBpm, 1)))
+        {
+            found = true;
+            tempoComboBox.setSelectedItemIndex(i);
+            break;
+        }
+    }
+    
+    if (!found)
+    {
+        // Insert custom BPM before the "Custom..." option
+        int customItemId = tempoComboBox.getNumItems(); // Use next available ID
+        tempoComboBox.addItem(juce::String(customBpm, 1) + " BPM (custom)", customItemId);
+        tempoComboBox.setSelectedId(customItemId);
+    }
+    
+    statusLabel.setText("Using " + juce::String(customBpm, 1) + " BPM", juce::dontSendNotification);
+    DBG("BandmatePanel: Applied custom BPM: " + juce::String(customBpm, 1));
+}
+
+void BandmatePanel::showSubTab(int index)
+{
+    currentSubTab = index;
+    
+    // Update tab button styles
+    if (index == 0)
+    {
+        // Matches tab active
+        matchesTabButton.setColour(juce::TextButton::buttonColourId, accentColour);
+        matchesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFFFFFFF));
+        allGroovesTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
+        allGroovesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
+    }
+    else
+    {
+        // All Grooves tab active
+        matchesTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
+        matchesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
+        allGroovesTabButton.setColour(juce::TextButton::buttonColourId, accentColour);
+        allGroovesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFFFFFFF));
+    }
+    
+    // Trigger layout update (visibility handled in resized)
+    resized();
+    repaint();
+}
+
+// DraggableMatchesListBox implementation
+BandmatePanel::DraggableMatchesListBox::DraggableMatchesListBox(BandmatePanel& owner)
+    : panel(owner)
+{
+    addMouseListener(&childListener, true);
+}
+
+BandmatePanel::DraggableMatchesListBox::~DraggableMatchesListBox()
+{
+    removeMouseListener(&childListener);
+}
+
+void BandmatePanel::DraggableMatchesListBox::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!dragStarted && e.getDistanceFromDragStart() > 8)
+    {
+        int row = getRowContainingPosition(e.getMouseDownX(), e.getMouseDownY());
+        startDragFromRow(row);
+        if (dragStarted) return;
+    }
+    
+    juce::ListBox::mouseDrag(e);
+}
+
+void BandmatePanel::DraggableMatchesListBox::mouseUp(const juce::MouseEvent& e)
+{
+    dragStarted = false;
+    juce::ListBox::mouseUp(e);
+}
+
+void BandmatePanel::DraggableMatchesListBox::startDragFromRow(int row)
+{
+    if (row >= 0 && row < static_cast<int>(panel.matchResults.size()))
+    {
+        dragStarted = true;
+        panel.selectedMatchIndex = row;
+        selectRow(row);
+        panel.startMatchExternalDrag();
+    }
+}
+
+// ChildMouseListener - intercepts drags from list row child components
+void BandmatePanel::DraggableMatchesListBox::ChildMouseListener::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!listBox.dragStarted && e.getDistanceFromDragStart() > 8)
+    {
+        auto localPos = listBox.getLocalPoint(e.eventComponent, e.getMouseDownPosition());
+        int row = listBox.getRowContainingPosition(localPos.x, localPos.y);
+        listBox.startDragFromRow(row);
+    }
+}
+
+void BandmatePanel::DraggableMatchesListBox::ChildMouseListener::mouseUp(const juce::MouseEvent& e)
+{
+    juce::ignoreUnused(e);
+    listBox.dragStarted = false;
+}
+
+void BandmatePanel::startMatchExternalDrag()
+{
+    if (isMatchDragging)
+        return;
+    
+    if (grooveManager == nullptr || selectedMatchIndex < 0 || 
+        selectedMatchIndex >= static_cast<int>(matchResults.size()))
+    {
+        DBG("BandmatePanel: Cannot start drag - no match selected");
+        return;
+    }
+    
+    const auto& match = matchResults[static_cast<size_t>(selectedMatchIndex)];
+    
+    // Export the selected match groove to a temp file
+    juce::File midiFile = grooveManager->exportGrooveToTempFile(match.categoryIndex, match.grooveIndex);
+    
+    DBG("BandmatePanel: Starting external drag with file: " + midiFile.getFullPathName());
+    
+    if (midiFile.existsAsFile())
+    {
+        isMatchDragging = true;
+        
+        // Copy file path to clipboard as fallback
+        juce::SystemClipboard::copyTextToClipboard(midiFile.getFullPathName());
+        DBG("BandmatePanel: Copied to clipboard: " + midiFile.getFullPathName());
+        
+        juce::StringArray files;
+        files.add(midiFile.getFullPathName());
+        
+        performExternalDragDropOfFiles(files, true,
+            nullptr, [this]() {
+                isMatchDragging = false;
+            });
+    }
+    else
+    {
+        DBG("BandmatePanel: Failed to export match for drag");
+    }
+}
+
+void BandmatePanel::startGrooveBrowserDrag(int categoryIndex, int grooveIndex)
+{
+    if (isMatchDragging)
+        return;
+    
+    if (grooveManager == nullptr || categoryIndex < 0 || grooveIndex < 0)
+    {
+        DBG("BandmatePanel: Cannot start groove browser drag - invalid indices");
+        return;
+    }
+    
+    // Export the groove to a temp file
+    juce::File midiFile = grooveManager->exportGrooveToTempFile(categoryIndex, grooveIndex);
+    
+    DBG("BandmatePanel: Starting groove browser drag with file: " + midiFile.getFullPathName());
+    
+    if (midiFile.existsAsFile())
+    {
+        isMatchDragging = true;
+        
+        // Copy file path to clipboard as fallback
+        juce::SystemClipboard::copyTextToClipboard(midiFile.getFullPathName());
+        DBG("BandmatePanel: Copied to clipboard: " + midiFile.getFullPathName());
+        
+        juce::StringArray files;
+        files.add(midiFile.getFullPathName());
+        
+        performExternalDragDropOfFiles(files, true,
+            nullptr, [this]() {
+                isMatchDragging = false;
+            });
+    }
+    else
+    {
+        DBG("BandmatePanel: Failed to export groove for drag");
+    }
 }
 
 // MatchesListModel implementation
@@ -699,4 +1140,5 @@ void BandmatePanel::MatchesListModel::listBoxItemDoubleClicked(int row, const ju
     panel.selectedMatchIndex = row;
     panel.addSelectedMatchToComposer();
 }
+
 

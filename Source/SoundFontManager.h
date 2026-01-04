@@ -2,147 +2,126 @@
     SoundFontManager.h
     ==================
     
-    Manages loading and playing SoundFont (SF2) files.
+    Manages loading and playback of SF2 (SoundFont) files.
     
-    WRAPPER CLASS PATTERN
-    ---------------------
-    This class "wraps" a C library (TinySoundFont) and provides a
-    clean, object-oriented interface. This is a common pattern when
-    using C libraries in C++ code.
+    SoundFonts are a format that contains:
+    - Audio samples of real instruments
+    - Mapping information (which sample plays for which note)
+    - Envelope and filter settings
     
-    Benefits:
-    - Hides the C API complexity
-    - Manages resource cleanup automatically (RAII)
-    - Provides type safety
-    - Integrates with our error handling style
+    We use TinySoundFont (tsf.h), a lightweight C library for SF2 playback.
+    
+    MULTI-OUT SUPPORT
+    -----------------
+    This class supports multi-output routing where each drum pad can be
+    sent to its own stereo output for individual mixing in the DAW.
+    
+    We maintain separate TSF instances for each output group to enable
+    independent rendering to different output buses.
 */
 
 #pragma once
 
 #include "JuceHeader.h"
+#include <map>
+#include <array>
+#include <functional>
 
-/*
-    FORWARD DECLARATION
-    -------------------
-    Instead of including the entire tsf.h header, we just declare
-    that a struct called 'tsf' exists.
-    
-    Benefits:
-    - Faster compilation (less code to process)
-    - Hides implementation details from users of this header
-    - Reduces dependencies
-    
-    The actual struct is defined in tsf.h, which we only include
-    in the .cpp file.
-*/
-typedef struct tsf tsf;
+// Forward declaration - tsf is defined in tsf.h
+struct tsf;
 
 class SoundFontManager
 {
 public:
+    // Number of individual output groups (one per drum pad)
+    static constexpr int NUM_OUTPUT_GROUPS = 16;
+    
     SoundFontManager();
     ~SoundFontManager();
-
-    /*
-        CONST METHODS
-        -------------
-        Methods marked 'const' promise not to modify the object.
-        This allows them to be called on const references/pointers.
-        
-        Good practice: mark all methods that don't modify state as const.
-    */
     
-    // Returns list of available kit names (scans the directory)
+    // Get list of available kits (SF2 files in soundFontsPath)
     juce::StringArray getAvailableKits() const;
     
-    // Load a soundfont by name - returns true on success
+    // Load a kit by name (without .sf2 extension)
     bool loadKit(const juce::String& kitName);
     
-    // Get pointer to the loaded soundfont (for advanced usage)
-    tsf* getSoundFont() { return soundFont; }
+    // Get the currently loaded kit name (thread-safe)
+    juce::String getCurrentKitName() const;
     
-    // Getter for current kit name
-    juce::String getCurrentKitName() const { return currentKitName; }
-    
-    // Set/get the soundfonts directory path
+    // Set the path where SF2 files are located
     void setSoundFontsPath(const juce::File& path);
+    
+    // Get the soundfonts path
     juce::File getSoundFontsPath() const { return soundFontsPath; }
     
-    // Set the audio sample rate (required before playing)
+    // Set the sample rate for audio rendering
     void setSampleRate(double sampleRate);
     
-    /*
-        NOTE CONTROL
-        ------------
-        These methods trigger and release notes in the soundfont.
-        
-        Note numbers follow MIDI convention (0-127).
-        Velocity is 0.0 to 1.0 (loudness/intensity).
-    */
+    // Trigger a note (velocity 0.0 to 1.0) - main output
     void noteOn(int note, float velocity);
+    
+    // Release a note - main output
     void noteOff(int note);
     
-    // Render audio samples into a buffer
-    // Buffer must have space for numSamples * 2 (stereo interleaved)
+    // Render audio to output buffer (stereo interleaved) - main output only
     void renderAudio(float* outputBuffer, int numSamples);
     
-    /*
-        PER-NOTE SETTINGS
-        -----------------
-        Allow individual volume and pan for each drum sound.
-    */
-    void setNoteVolume(int note, float volume);  // 0.0 to 1.0
-    void setNotePan(int note, float pan);        // -1.0 (left) to 1.0 (right)
+    // Per-note volume control (0.0 to 1.0)
+    void setNoteVolume(int note, float volume);
     float getNoteVolume(int note) const;
+    
+    // Per-note pan control (-1.0 left to 1.0 right)
+    void setNotePan(int note, float pan);
     float getNotePan(int note) const;
+    
+    // Per-note mute control
+    void setNoteMute(int note, bool muted);
+    bool getNoteMute(int note) const;
+    
+    // ===== MULTI-OUT SUPPORT =====
+    
+    // Set the function that maps MIDI notes to output groups
+    void setNoteToGroupMapper(std::function<int(int)> mapper);
+    
+    // Trigger a note on a specific output group (for multi-out)
+    void noteOnToGroup(int note, float velocity, int groupIndex);
+    
+    // Release a note on a specific output group
+    void noteOffToGroup(int note, int groupIndex);
+    
+    // Render audio for all output groups (multi-out)
+    // mainBuffer: stereo interleaved buffer for main mix
+    // groupBuffers: array of stereo interleaved buffers for each output group
+    void renderAudioMultiOut(float* mainBuffer, 
+                             std::array<float*, NUM_OUTPUT_GROUPS>& groupBuffers,
+                             int numSamples);
 
 private:
-    /*
-        RAW POINTER TO C LIBRARY RESOURCE
-        ---------------------------------
-        'tsf*' is a pointer to the TinySoundFont struct.
-        
-        Since this is a C library, we use a raw pointer (not smart pointer)
-        and manually manage the lifetime.
-        
-        Initialization to 'nullptr' is important - uninitialized pointers
-        contain garbage values and can cause crashes!
-    */
+    // Main TinySoundFont handle (for main stereo mix)
     tsf* soundFont = nullptr;
     
+    // Separate TSF instances for each output group (for multi-out)
+    std::array<tsf*, NUM_OUTPUT_GROUPS> soundFontGroups;
+    
+    // Function to map MIDI note to output group index
+    std::function<int(int)> noteToGroupMapper;
+    
+    // Path to directory containing SF2 files
     juce::File soundFontsPath;
+    
+    // Currently loaded kit name
     juce::String currentKitName;
+    
+    // Audio sample rate
     double currentSampleRate = 44100.0;
     
-    /*
-        std::map - KEY-VALUE CONTAINER
-        ------------------------------
-        std::map<int, float> stores pairs of (note number -> value).
-        
-        It's like a dictionary in Python:
-        noteVolumes[36] = 0.8;  // Set kick drum volume to 80%
-        float v = noteVolumes[36];  // Get kick drum volume
-        
-        Uses a balanced tree internally (O(log n) lookup).
-        For better performance, consider std::unordered_map (O(1) average).
-    */
+    // Per-note volume, pan, and mute settings
     std::map<int, float> noteVolumes;
     std::map<int, float> notePans;
+    std::map<int, bool> noteMutes;
     
-    /*
-        THREAD SAFETY
-        -------------
-        CriticalSection is JUCE's mutex (mutual exclusion lock).
-        
-        Why we need this:
-        - renderAudio() is called from the audio thread
-        - loadKit() might be called from the UI thread
-        - They both access 'soundFont'
-        - Simultaneous access = undefined behavior/crashes
-        
-        The lock ensures only one thread can access the resource at a time.
-    */
-    juce::CriticalSection lock;
+    // Thread safety lock (mutable to allow use in const methods)
+    mutable juce::CriticalSection lock;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SoundFontManager)
 };

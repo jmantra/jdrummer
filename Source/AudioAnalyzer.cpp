@@ -271,12 +271,37 @@ double AudioAnalyzer::detectBPM()
     
     double bpm = bpmDetector.estimateTempoOfSamples(samples, numSamples);
     
-    // Get confidence from candidates
+    // Get all tempo candidates and store the top 3
     auto candidates = bpmDetector.getTempoCandidates();
+    detectedPattern.alternativeBpms.clear();
+    
     if (!candidates.empty() && bpm > 0)
     {
-        // If first candidate is much stronger, high confidence
-        detectedPattern.confidence = 0.8;  // Default confidence
+        // Store up to 3 unique tempo candidates
+        for (size_t i = 0; i < std::min(candidates.size(), size_t(3)); ++i)
+        {
+            detectedPattern.alternativeBpms.push_back(candidates[i]);
+        }
+        
+        // Set confidence based on how dominant the first candidate is
+        if (candidates.size() >= 2 && candidates[1] > 0)
+        {
+            // Higher confidence if first candidate is significantly stronger
+            // (candidates are sorted by likelihood)
+            detectedPattern.confidence = 0.8;
+        }
+        else
+        {
+            detectedPattern.confidence = 0.9;  // Single strong candidate
+        }
+        
+        DBG("AudioAnalyzer: Found " + juce::String(detectedPattern.alternativeBpms.size()) 
+            + " tempo candidates");
+        for (size_t i = 0; i < detectedPattern.alternativeBpms.size(); ++i)
+        {
+            DBG("  Candidate " + juce::String(i + 1) + ": " 
+                + juce::String(detectedPattern.alternativeBpms[i], 1) + " BPM");
+        }
     }
     
     return bpm;
@@ -521,4 +546,5 @@ double AudioAnalyzer::calculatePatternSimilarity(const RhythmPattern& pattern, c
     
     return finalScore;
 }
+
 

@@ -9,19 +9,24 @@
 
 GrooveManager::GrooveManager()
 {
-    // Create a temporary directory for exported MIDI files
-    tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                  .getChildFile("jdrummer_grooves");
+    // Create a persistent directory for exported MIDI files
+    // On Linux, use /tmp for better compatibility with Flatpak sandboxed DAWs
+    #if JUCE_LINUX
+    tempDir = juce::File("/tmp/jdrummer_exports");
+    #else
+    tempDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                  .getChildFile("JDrummer_Exports");
+    #endif
     tempDir.createDirectory();
+    
+    // Clean up old export files on startup (files older than 1 hour)
+    cleanupOldExports();
 }
 
 GrooveManager::~GrooveManager()
 {
-    // Clean up temporary files
-    if (tempDir.exists())
-    {
-        tempDir.deleteRecursively();
-    }
+    // Don't delete the export directory on shutdown - DAWs like Bitwig
+    // may still be reading the files asynchronously after the drag operation
 }
 
 void GrooveManager::setGroovesPath(const juce::File& path)
@@ -631,11 +636,31 @@ juce::File GrooveManager::exportGrooveToTempFile(int categoryIndex, int grooveIn
     juce::ScopedLock sl(lock);
     
     const Groove* groove = getGroove(categoryIndex, grooveIndex);
-    if (groove == nullptr)
+    if (groove == nullptr || !groove->file.existsAsFile())
         return juce::File();
     
-    // Just return the original file - it's already a MIDI file!
-    return groove->file;
+    // Copy the groove file to temp directory for DAW access
+    // (Original file may be inside VST3 bundle with restricted access)
+    if (!tempDir.exists())
+    {
+        tempDir.createDirectory();
+    }
+    
+    // Create a unique filename based on category and groove name
+    juce::String safeName = groove->name.replaceCharacters(" /\\:*?\"<>|", "_________");
+    juce::File destFile = tempDir.getChildFile(safeName + ".mid");
+    
+    // Copy the original MIDI file to temp location
+    if (groove->file.copyFileTo(destFile))
+    {
+        DBG("GrooveManager: Copied groove to: " + destFile.getFullPathName());
+        return destFile;
+    }
+    else
+    {
+        DBG("GrooveManager: Failed to copy groove file");
+        return groove->file;  // Fallback to original
+    }
 }
 
 juce::File GrooveManager::exportCompositionToTempFile()
@@ -645,14 +670,26 @@ juce::File GrooveManager::exportCompositionToTempFile()
     if (composerItems.empty())
         return juce::File();
     
-    // Create a new MIDI file with all composer items
+    // Calculate total length first
+    double totalLengthInBeats = 0.0;
+    for (const auto& item : composerItems)
+    {
+        totalLengthInBeats += item.lengthInBeats;
+    }
+    
+    // Create a new MIDI file - Format Type 0 (single track) for maximum compatibility
     juce::MidiFile midiFile;
     midiFile.setTicksPerQuarterNote(480);  // Standard resolution
     
     juce::MidiMessageSequence sequence;
     
-    // Add tempo (120 BPM default)
-    auto tempoEvent = juce::MidiMessage::tempoMetaEvent(500000);  // 120 BPM
+    // Add track name meta event (helps some DAWs identify the track)
+    juce::MidiMessage trackName = juce::MidiMessage::textMetaEvent(3, "JDrummer Composition");
+    trackName.setTimeStamp(0);
+    sequence.addEvent(trackName);
+    
+    // Add tempo (120 BPM = 500000 microseconds per beat)
+    auto tempoEvent = juce::MidiMessage::tempoMetaEvent(500000);
     tempoEvent.setTimeStamp(0);
     sequence.addEvent(tempoEvent);
     
@@ -671,7 +708,6 @@ juce::File GrooveManager::exportCompositionToTempFile()
         for (const auto& evt : groove->events)
         {
             // Only include events within the ITEM's length (respects bar count)
-            // This is the key fix - use item.lengthInBeats, not groove->lengthInBeats
             if (evt.timeInBeats < item.lengthInBeats)
             {
                 juce::MidiMessage msg = evt.message;
@@ -683,21 +719,83 @@ juce::File GrooveManager::exportCompositionToTempFile()
         }
     }
     
+    // Ensure all note-on events have matching note-off events
     sequence.updateMatchedPairs();
+    
+    // Sort events by timestamp
+    sequence.sort();
+    
+    // Add end-of-track meta event at the very end
+    // This is REQUIRED by MIDI spec and some DAWs (like Bitwig) are strict about it
+    auto endOfTrack = juce::MidiMessage::endOfTrack();
+    endOfTrack.setTimeStamp(totalLengthInBeats * 480.0);
+    sequence.addEvent(endOfTrack);
+    
     midiFile.addTrack(sequence);
     
-    // Write to temp file
-    juce::File outFile = tempDir.getChildFile("composition_" 
+    // Write to export file (persistent directory for DAW compatibility)
+    juce::File outFile = tempDir.getChildFile("jdrummer_composition_" 
         + juce::String(juce::Time::currentTimeMillis()) + ".mid");
     
-    juce::FileOutputStream stream(outFile);
-    if (stream.openedOk())
+    // Delete any existing file first
+    if (outFile.existsAsFile())
+        outFile.deleteFile();
+    
     {
-        midiFile.writeTo(stream);
-        DBG("GrooveManager: Exported composition to " + outFile.getFullPathName());
+        juce::FileOutputStream stream(outFile);
+        if (stream.openedOk())
+        {
+            bool writeSuccess = midiFile.writeTo(stream);
+            stream.flush();
+            
+            if (writeSuccess)
+            {
+                DBG("GrooveManager: Exported composition to " + outFile.getFullPathName() 
+                    + " (" + juce::String(outFile.getSize()) + " bytes)");
+            }
+            else
+            {
+                DBG("GrooveManager: Failed to write MIDI data");
+                return juce::File();
+            }
+        }
+        else
+        {
+            DBG("GrooveManager: Failed to open output file");
+            return juce::File();
+        }
+    }  // FileOutputStream closes here, ensuring file is fully written
+    
+    // Verify the file was written correctly
+    if (outFile.existsAsFile() && outFile.getSize() > 0)
+    {
         return outFile;
     }
     
+    DBG("GrooveManager: Export verification failed");
     return juce::File();
 }
+
+void GrooveManager::cleanupOldExports()
+{
+    // Remove exported MIDI files older than 1 hour
+    // This prevents the exports folder from growing indefinitely
+    // while ensuring DAWs have plenty of time to read dropped files
+    
+    if (!tempDir.exists())
+        return;
+    
+    auto now = juce::Time::getCurrentTime();
+    auto oneHourAgo = now - juce::RelativeTime::hours(1);
+    
+    for (auto& file : tempDir.findChildFiles(juce::File::findFiles, false, "*.mid"))
+    {
+        if (file.getLastModificationTime() < oneHourAgo)
+        {
+            file.deleteFile();
+            DBG("GrooveManager: Cleaned up old export: " + file.getFileName());
+        }
+    }
+}
+
 

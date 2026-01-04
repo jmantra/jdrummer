@@ -16,7 +16,8 @@
 
 class GrooveComposer : public juce::Component,
                        public juce::DragAndDropTarget,
-                       public juce::DragAndDropContainer
+                       public juce::DragAndDropContainer,
+                       private juce::Button::Listener
 {
 public:
     GrooveComposer();
@@ -26,6 +27,7 @@ public:
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
     
     // Set the groove manager
     void setGrooveManager(GrooveManager* manager);
@@ -51,11 +53,15 @@ public:
 private:
     GrooveManager* grooveManager = nullptr;
     
+    // Button::Listener
+    void buttonClicked(juce::Button* button) override;
+    
     // UI Components
     juce::Label titleLabel;
     juce::Label hintLabel;
     juce::TextButton playButton;
     juce::TextButton clearButton;
+    juce::TextButton exportButton;  // Export and show in folder
     
     // Composer item display
     struct ItemRect
@@ -69,12 +75,17 @@ private:
     int selectedItemIndex = -1;
     bool dragOver = false;
     bool isPlaying = false;
+    bool isDraggingExternal = false;  // Prevent multiple drag starts
+    juce::File lastExportedFile;       // Keep reference to prevent premature deletion
     
     // Calculate item rectangles based on current size
     void updateItemRects();
     
     // Get item at position
     int getItemAtPosition(juce::Point<int> pos);
+    
+    // Start external drag for DAW
+    void startExternalDrag();
     
     // Colors
     juce::Colour backgroundColour{0xFF1A1A1A};
@@ -85,4 +96,5 @@ private:
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GrooveComposer)
 };
+
 

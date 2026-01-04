@@ -1,0 +1,8 @@
+syntax: glob
+*~
+re:^doc/html/
+re:^doc/latex/
+*.so
+*.o
+*.a
+re:^tests/test-minibpm$

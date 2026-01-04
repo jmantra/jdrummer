@@ -37,7 +37,26 @@
 */
 JdrummerAudioProcessor::JdrummerAudioProcessor()
     : AudioProcessor(BusesProperties()
-                     .withOutput("Output", juce::AudioChannelSet::stereo(), true))
+                     // Main stereo output (always enabled)
+                     .withOutput("Main", juce::AudioChannelSet::stereo(), true)
+                     // Individual pad outputs (16 stereo buses, disabled by default for compatibility)
+                     // DAWs like Ardour/REAPER can enable these for multi-out/fan-out
+                     .withOutput("Kick", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Snare", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("HiHat Closed", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("HiHat Open", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Tom Low", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Tom Mid", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Tom High", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Crash", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Ride", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Rim", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Clap", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Tambourine", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Cowbell", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Perc 1", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Perc 2", juce::AudioChannelSet::stereo(), false)
+                     .withOutput("Perc 3", juce::AudioChannelSet::stereo(), false))
 {
     /*
         FINDING SOUNDFONTS
@@ -276,6 +295,17 @@ void JdrummerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     // Pre-allocate buffer for stereo audio (2 channels)
     // static_cast<size_t> converts int to size_t (unsigned) - required by vector
     renderBuffer.resize(static_cast<size_t>(samplesPerBlock) * 2);
+    
+    // Pre-allocate multi-out buffers for each output group
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        multiOutBuffers[i].resize(static_cast<size_t>(samplesPerBlock) * 2);
+    }
+    
+    // Setup note-to-group mapper for multi-out routing
+    soundFontManager.setNoteToGroupMapper([](int note) {
+        return getOutputGroupForNote(note);
+    });
 }
 
 // Called when playback stops - clean up resources here
@@ -288,15 +318,53 @@ void JdrummerAudioProcessor::releaseResources()
     BUS LAYOUT SUPPORT
     ------------------
     Tells the host what audio configurations we support.
-    We only support stereo output, no input.
+    For multi-out, we support stereo main output and stereo or disabled individual outputs.
 */
 bool JdrummerAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-    // Reject anything that's not stereo output
+    // Main output must be stereo
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
+    
+    // Individual outputs can be stereo or disabled
+    for (int i = 1; i < layouts.outputBuses.size(); ++i)
+    {
+        const auto& bus = layouts.outputBuses[i];
+        if (!bus.isDisabled() && bus != juce::AudioChannelSet::stereo())
+            return false;
+    }
 
     return true;
+}
+
+/*
+    GET OUTPUT GROUP FOR NOTE
+    -------------------------
+    Maps MIDI drum notes to output group indices (0-15).
+    This determines which output bus each drum sound goes to.
+*/
+int JdrummerAudioProcessor::getOutputGroupForNote(int midiNote)
+{
+    // Standard GM drum mapping to output groups
+    switch (midiNote)
+    {
+        case 36: case 35:           return 0;   // Kick (Bass Drum 1/2)
+        case 38: case 40:           return 1;   // Snare (Acoustic/Electric)
+        case 42: case 44:           return 2;   // Hi-Hat Closed / Pedal
+        case 46:                    return 3;   // Hi-Hat Open
+        case 41: case 43: case 45:  return 4;   // Low Tom (Floor Tom)
+        case 47: case 48:           return 5;   // Mid Tom
+        case 50:                    return 6;   // High Tom
+        case 49: case 57:           return 7;   // Crash Cymbal
+        case 51: case 59:           return 8;   // Ride Cymbal
+        case 37:                    return 9;   // Side Stick / Rim
+        case 39:                    return 10;  // Hand Clap
+        case 54:                    return 11;  // Tambourine
+        case 56:                    return 12;  // Cowbell
+        case 60: case 61:           return 13;  // Percussion 1 (Hi/Low Bongo)
+        case 62: case 63:           return 14;  // Percussion 2 (Mute/Open Conga)
+        default:                    return 15;  // Percussion 3 (everything else)
+    }
 }
 
 /*
@@ -323,12 +391,26 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     */
     juce::ScopedNoDenormals noDenormals;
     
+    /*
+        DEFENSIVE BOUNDS CHECKING
+        -------------------------
+        Some DAWs (like Qtractor) may not properly support multi-out plugins
+        and might provide a buffer with fewer channels than expected.
+        Check early to avoid crashes from buffer overruns.
+    */
+    const int bufferNumChannels = buffer.getNumChannels();
+    const int bufferNumSamples = buffer.getNumSamples();
+    
+    // Must have at least stereo output for main mix
+    if (bufferNumChannels < 2 || bufferNumSamples <= 0)
+        return;
+    
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Clear any channels we're not using
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear(i, 0, buffer.getNumSamples());
+    // Clear any channels we're not using (with bounds check)
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels && i < bufferNumChannels; ++i)
+        buffer.clear(i, 0, bufferNumSamples);
 
     /*
         GET DAW TEMPO AND POSITION
@@ -359,22 +441,41 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     std::vector<juce::MidiMessage> grooveMidiEvents;
     grooveManager.processBlock(currentBPM, currentPPQ, hostIsPlaying, buffer.getNumSamples(), grooveMidiEvents);
     
-    // Trigger notes from groove playback
+    // Trigger notes from groove playback (both main and individual outputs)
     for (const auto& msg : grooveMidiEvents)
     {
         if (msg.isNoteOn())
         {
-            soundFontManager.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
+            int note = msg.getNoteNumber();
+            float velocity = msg.getFloatVelocity();
+            
+            // Trigger on main output
+            soundFontManager.noteOn(note, velocity);
+            
+            // Trigger on individual output group for multi-out
+            int groupIndex = getOutputGroupForNote(note);
+            if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
+            {
+                soundFontManager.noteOnToGroup(note, velocity, groupIndex);
+            }
             
             // Track for UI visualization
             {
                 juce::ScopedLock sl(triggeredNotesLock);
-                recentlyTriggeredNotes.push_back(msg.getNoteNumber());
+                recentlyTriggeredNotes.push_back(note);
             }
         }
         else if (msg.isNoteOff())
         {
-            soundFontManager.noteOff(msg.getNoteNumber());
+            int note = msg.getNoteNumber();
+            soundFontManager.noteOff(note);
+            
+            // Also release on individual output group
+            int groupIndex = getOutputGroupForNote(note);
+            if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
+            {
+                soundFontManager.noteOffToGroup(note, groupIndex);
+            }
         }
     }
 
@@ -396,27 +497,38 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             float velocity = message.getFloatVelocity();  // 0.0 to 1.0
             int note = message.getNoteNumber();           // 0 to 127
             
-            // Trigger the drum sound
+            // Trigger the drum sound on main output
             soundFontManager.noteOn(note, velocity);
+            
+            // Trigger on individual output group for multi-out
+            int groupIndex = getOutputGroupForNote(note);
+            if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
+            {
+                soundFontManager.noteOnToGroup(note, velocity, groupIndex);
+            }
             
             /*
                 THREAD-SAFE ACCESS
                 ------------------
                 We need to tell the UI which notes were triggered.
                 The UI runs on a different thread, so we need protection.
-                
-                ScopedLock is a RAII lock - it acquires the lock on creation
-                and releases it automatically when it goes out of scope (the closing brace).
             */
             {
                 juce::ScopedLock sl(triggeredNotesLock);
                 recentlyTriggeredNotes.push_back(note);
-            }  // Lock is released here automatically
+            }
         }
         else if (message.isNoteOff())
         {
             int note = message.getNoteNumber();
             soundFontManager.noteOff(note);
+            
+            // Also release on individual output group
+            int groupIndex = getOutputGroupForNote(note);
+            if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
+            {
+                soundFontManager.noteOffToGroup(note, groupIndex);
+            }
         }
     }
     
@@ -427,23 +539,30 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     if (renderBuffer.size() < static_cast<size_t>(numSamples) * 2)
         renderBuffer.resize(static_cast<size_t>(numSamples) * 2);
     
-    /*
-        RENDER AUDIO
-        ------------
-        The soundfont engine fills our buffer with interleaved stereo audio:
-        [L0, R0, L1, R1, L2, R2, ...]
-        
-        .data() returns a raw pointer to the vector's internal array.
-    */
-    soundFontManager.renderAudio(renderBuffer.data(), numSamples);
+    // Ensure multi-out buffers are large enough
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        if (multiOutBuffers[i].size() < static_cast<size_t>(numSamples) * 2)
+            multiOutBuffers[i].resize(static_cast<size_t>(numSamples) * 2);
+    }
     
     /*
-        DEINTERLEAVE
-        ------------
+        RENDER AUDIO (MULTI-OUT)
+        ------------------------
+        Render main output and all individual output groups.
+    */
+    std::array<float*, NUM_OUTPUT_GROUPS> groupBufferPtrs;
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        groupBufferPtrs[i] = multiOutBuffers[i].data();
+    }
+    
+    soundFontManager.renderAudioMultiOut(renderBuffer.data(), groupBufferPtrs, numSamples);
+    
+    /*
+        DEINTERLEAVE - MAIN OUTPUT (Bus 0)
+        ----------------------------------
         JUCE uses separate buffers for each channel, not interleaved.
-        We need to split our interleaved data into left and right channels.
-        
-        getWritePointer() returns a float* pointing to the channel's samples.
     */
     auto* leftChannel = buffer.getWritePointer(0);
     auto* rightChannel = buffer.getWritePointer(1);
@@ -452,6 +571,42 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     {
         leftChannel[i] = renderBuffer[static_cast<size_t>(i) * 2];      // Even indices
         rightChannel[i] = renderBuffer[static_cast<size_t>(i) * 2 + 1]; // Odd indices
+    }
+    
+    /*
+        COPY TO INDIVIDUAL OUTPUT BUSES (Buses 1-16)
+        --------------------------------------------
+        Each output group goes to its own stereo bus for DAW mixing.
+        
+        NOTE: Some DAWs may not provide all channels we expect.
+        Use bufferNumChannels for bounds checking to prevent crashes.
+    */
+    for (int group = 0; group < NUM_OUTPUT_GROUPS; ++group)
+    {
+        int busIndex = group + 1;  // Bus 0 is main, buses 1-16 are individual outputs
+        
+        if (busIndex < getBusCount(false))  // Check if bus exists
+        {
+            auto* bus = getBus(false, busIndex);
+            if (bus != nullptr && bus->isEnabled())
+            {
+                // Get the channel indices for this bus in the main buffer
+                int startChannel = getChannelIndexInProcessBlockBuffer(false, busIndex, 0);
+                
+                // Extra bounds check: ensure channels exist in buffer before accessing
+                if (startChannel >= 0 && startChannel + 1 < bufferNumChannels)
+                {
+                    auto* busLeft = buffer.getWritePointer(startChannel);
+                    auto* busRight = buffer.getWritePointer(startChannel + 1);
+                    
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        busLeft[i] = multiOutBuffers[group][static_cast<size_t>(i) * 2];
+                        busRight[i] = multiOutBuffers[group][static_cast<size_t>(i) * 2 + 1];
+                    }
+                }
+            }
+        }
     }
     
     // Mix in preview audio if playing (with sample rate conversion)
@@ -624,12 +779,28 @@ void JdrummerAudioProcessor::setStateInformation(const void* data, int sizeInByt
 // Trigger a note from the UI (when user clicks a pad)
 void JdrummerAudioProcessor::triggerNote(int note, float velocity)
 {
+    // Trigger on main output
     soundFontManager.noteOn(note, velocity);
+    
+    // Trigger on individual output group for multi-out
+    int groupIndex = getOutputGroupForNote(note);
+    if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
+    {
+        soundFontManager.noteOnToGroup(note, velocity, groupIndex);
+    }
 }
 
 void JdrummerAudioProcessor::releaseNote(int note)
 {
+    // Release on main output
     soundFontManager.noteOff(note);
+    
+    // Release on individual output group
+    int groupIndex = getOutputGroupForNote(note);
+    if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
+    {
+        soundFontManager.noteOffToGroup(note, groupIndex);
+    }
 }
 
 /*

@@ -2,7 +2,7 @@
 
 A powerful, open-source drum machine VST3 plugin built with the JUCE framework. JDrummer features SoundFont-based drum kits, a comprehensive groove library with tempo-synced playback, a composition tool, and an intelligent Groove Matcher that analyzes audio to find matching drum patterns.
 
-![JDrummer](https://img.shields.io/badge/Format-VST3-blue) ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-green) ![License](https://img.shields.io/badge/License-Open%20Source-orange)
+![JDrummer](https://img.shields.io/badge/Format-VST3%20%7C%20AU-blue) ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-green) ![License](https://img.shields.io/badge/License-Open%20Source-orange)
 
 ## Table of Contents
 
@@ -15,16 +15,18 @@ A powerful, open-source drum machine VST3 plugin built with the JUCE framework. 
 - [Installation](#installation)
   - [Linux](#linux)
   - [Windows](#windows)
+  - [macOS](#macos)
   - [Adding Custom SoundFonts](#adding-custom-soundfonts)
   - [Adding Custom Grooves](#adding-custom-grooves)
 - [Building from Source](#building-from-source)
   - [Prerequisites](#prerequisites)
   - [Building on Linux](#building-on-linux)
   - [Building on Windows (Native)](#building-on-windows-native)
+  - [Building on macOS](#building-on-macos)
   - [Cross-Compiling for Windows from Linux](#cross-compiling-for-windows-from-linux)
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
-- [Tested DAWs](#tested-daws)
+- [Tested DAWs/Known Issues](#tested-daws/known_issues)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
@@ -40,8 +42,8 @@ A powerful, open-source drum machine VST3 plugin built with the JUCE framework. 
   - Specialty kits (Orchestral Percussion, Brush Drums, NIN Drumkit)
 - **Per-pad controls**:
   - Individual volume adjustment (0-100%)
-  - Pan control (left/right)
-  - Solo and mute options
+- Pan control (left/right)
+- Solo and mute options
 - **Dynamic kit loading** - Add your own .sf2 SoundFont files to expand your library
 
 ### 🎵 Grooves Browser
@@ -94,7 +96,7 @@ Groove Matcher Tab
 
 
 ## Installation
-Binary VST3 for Linux and Windows available on the **[Releases](https://github.com/jmantra/jdrummer/releases)** page.
+Binary VST3 for Linux, Windows, and macOS available on the **[Releases](https://github.com/jmantra/jdrummer/releases)** page. macOS builds include both VST3 and Audio Unit (AU) formats.
 
 ### Linux
 Copy the VST3 bundle to your VST3 directory:
@@ -107,10 +109,36 @@ Copy the `jdrummer.vst3` folder to one of these locations:
 - **System-wide**: `C:\Program Files\Common Files\VST3\`
 - **User only**: `C:\Users\<YourUsername>\Documents\VST3\`
 
+### macOS
+JDrummer builds as both **VST3** and **Audio Unit (AU)** on macOS.
+
+**VST3 Installation:**
+Copy the VST3 bundle to your VST3 directory:
+```bash
+cp -r jdrummer.vst3 ~/Library/Audio/Plug-Ins/VST3/
+# Or system-wide:
+sudo cp -r jdrummer.vst3 /Library/Audio/Plug-Ins/VST3/
+```
+
+**Audio Unit Installation:**
+Copy the AU component to your Components directory:
+```bash
+cp -r jdrummer.component ~/Library/Audio/Plug-Ins/Components/
+# Or system-wide:
+sudo cp -r jdrummer.component /Library/Audio/Plug-Ins/Components/
+```
+
+After installing, you may need to restart your DAW or run:
+```bash
+killall -9 AudioComponentRegistrar
+```
+
 ### Adding Custom SoundFonts
 Place additional `.sf2` SoundFont files in the plugin's soundfonts directory:
 - **Linux**: `~/.vst3/jdrummer.vst3/Contents/Resources/soundfonts/`
 - **Windows**: `<VST3 Location>\jdrummer.vst3\Contents\Resources\soundfonts\`
+- **macOS (VST3)**: `~/Library/Audio/Plug-Ins/VST3/jdrummer.vst3/Contents/Resources/soundfonts/`
+- **macOS (AU)**: `~/Library/Audio/Plug-Ins/Components/jdrummer.component/Contents/Resources/soundfonts/`
 
 The plugin will automatically detect new SoundFonts on the next load.
 
@@ -118,6 +146,8 @@ The plugin will automatically detect new SoundFonts on the next load.
 Place additional `.mid` MIDI files in the plugin's Grooves directory:
 - **Linux**: `~/.vst3/jdrummer.vst3/Contents/Resources/Grooves/`
 - **Windows**: `<VST3 Location>\jdrummer.vst3\Contents\Resources\Grooves\`
+- **macOS (VST3)**: `~/Library/Audio/Plug-Ins/VST3/jdrummer.vst3/Contents/Resources/Grooves/`
+- **macOS (AU)**: `~/Library/Audio/Plug-Ins/Components/jdrummer.component/Contents/Resources/Grooves/`
 
 Organize grooves into subfolders to create categories in the browser.
 
@@ -155,6 +185,23 @@ sudo pacman -S libxrandr libxrender webkit2gtk glu mesa curl
 - Visual Studio 2019 or later with C++ desktop development workload
 - CMake 3.15 or later
 - Git
+
+#### macOS
+```bash
+# Install Xcode Command Line Tools
+xcode-select --install
+
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install CMake
+brew install cmake
+```
+
+**Requirements:**
+- macOS 10.13 (High Sierra) or later
+- Xcode 12 or later (or Command Line Tools)
+- CMake 3.15 or later
 
 ### Building on Linux
 
@@ -211,6 +258,67 @@ sudo pacman -S libxrandr libxrender webkit2gtk glu mesa curl
    
    # Copy to your VST3 directory
    xcopy /E /I jdrummer_artefacts\Release\VST3\jdrummer.vst3 "%COMMONPROGRAMFILES%\VST3\jdrummer.vst3"
+   ```
+
+### Building on macOS
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/jdrummer.git
+   cd jdrummer
+   ```
+
+2. **Create build directory and configure**
+   ```bash
+   mkdir build && cd build
+   cmake .. -DCMAKE_BUILD_TYPE=Release -G "Xcode"
+   ```
+   
+   Or for a Makefile-based build (faster for command line):
+   ```bash
+   mkdir build && cd build
+   cmake .. -DCMAKE_BUILD_TYPE=Release
+   ```
+
+3. **Build the plugin**
+   
+   Using Xcode project:
+   ```bash
+   cmake --build . --config Release
+   ```
+   
+   Or using Make:
+   ```bash
+   make -j$(sysctl -n hw.ncpu)
+   ```
+
+4. **Install the VST3**
+   ```bash
+   # The VST3 bundle will be in:
+   # build/jdrummer_artefacts/Release/VST3/jdrummer.vst3
+   
+   # Copy to your user VST3 directory
+   cp -r jdrummer_artefacts/Release/VST3/jdrummer.vst3 ~/Library/Audio/Plug-Ins/VST3/
+   
+   # Or system-wide (requires admin password)
+   sudo cp -r jdrummer_artefacts/Release/VST3/jdrummer.vst3 /Library/Audio/Plug-Ins/VST3/
+   ```
+
+5. **Install the Audio Unit**
+   ```bash
+   # The AU component will be in:
+   # build/jdrummer_artefacts/Release/AU/jdrummer.component
+   
+   # Copy to your user Components directory
+   cp -r jdrummer_artefacts/Release/AU/jdrummer.component ~/Library/Audio/Plug-Ins/Components/
+   
+   # Or system-wide (requires admin password)
+   sudo cp -r jdrummer_artefacts/Release/AU/jdrummer.component /Library/Audio/Plug-Ins/Components/
+   ```
+
+6. **Refresh Audio Unit cache** (if the AU doesn't appear in your DAW)
+   ```bash
+   killall -9 AudioComponentRegistrar
    ```
 
 ### Cross-Compiling for Windows from Linux
@@ -325,13 +433,19 @@ JDrummer uses the following open-source libraries:
 - **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** - SoundFont synthesis library
 - **[minibpm](https://github.com/breakfastquay/minibpm)** - Lightweight BPM detection library
 
-## Tested DAWs
+## Tested DAWs/Known Issues
 
 JDrummer has been tested with:
-- Ardour (Linux, Windows)
-- REAPER (Linux, Windows)
-- Bitwig Studio (Linux) - Drag and Drop does not currently work Bitwig Flatpak 5.3
+- Ardour (Linux, Windows, macOS)
+- REAPER (Linux, Windows,macOS)
+- GarageBand (macOS) - AU only
+- Bitwig Studio (Linux, Windows) - Drag and Drop does not currently work in Bitwig Flatpak 5.3
 - Plugin crashes when trying to load in Qtractor
+- n-track (Linux)
+- Studio Pro 7 Beta for Linux - Plugin loads but GUI elements don't show
+- Qtractor - Plugin loads in the latest appimage version but drag and drop does not work.
+- FL Studio (Windows) - Able to drag to Piano Roll window but not track
+
 
 ## Troubleshooting
 
@@ -354,6 +468,19 @@ JDrummer has been tested with:
 2. Use files with BPM in the filename for best results
 3. Ensure the audio file is a supported format (WAV, MP3, FLAC, OGG, AIFF)
 
+### macOS: Audio Unit not appearing in DAW
+1. Run `killall -9 AudioComponentRegistrar` to refresh the AU cache
+2. Restart your DAW after installing
+3. Check that the `.component` bundle is in `~/Library/Audio/Plug-Ins/Components/` or `/Library/Audio/Plug-Ins/Components/`
+4. Verify the plugin passes validation: `auval -v aumu Jdrm Manu`
+
+### macOS: Gatekeeper blocking the plugin
+If macOS blocks the plugin as unidentified developer:
+1. Right-click (or Control-click) on the `.vst3` or `.component` bundle
+2. Select "Open" from the context menu
+3. Click "Open" in the dialog that appears
+4. Alternatively, run: `xattr -cr ~/Library/Audio/Plug-Ins/VST3/jdrummer.vst3`
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
@@ -367,5 +494,11 @@ This project is open source. See LICENSE file for details.
 - Thanks to the JUCE team for their excellent framework
 - TinySoundFont by Bernhard Schelling
 - minibpm by Breakfast Quay
-- All the SoundFont and MIDI groove creators (MIDI Grooves provided by  **[TheDrumJockey](https://youtu.be/tZzl3xBaBW8?si=pIdaIxch_DVNYvuw)** )
+- Soundfonts by:
+   - S. Christian Collins  **[GeneralUser GS Soundfont](https://schristiancollins.com/generaluser.php)** 
+   -  **[AVL Drumkits by Glen MacArthur ](https://www.bandshed.net/avldrumkits/)** licensed under  CC-BY-SA 3.0
+   -  **[Hydrogen Drum Kits ](https://sourceforge.net/projects/hydrogen/files/Sound%20Libraries/Main%20sound%20libraries/)** 
+   - **[Kor Tiny](https://www.vogons.org/viewtopic.php?f=24&t=57273)**
+   - SoniNeko and NIN Kit found on Musical Artifacts 
+- MIDI Grooves  by  **[TheDrumJockey](https://youtu.be/tZzl3xBaBW8?si=pIdaIxch_DVNYvuw)** 
 

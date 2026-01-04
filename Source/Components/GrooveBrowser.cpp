@@ -8,15 +8,64 @@
 #include "GrooveBrowser.h"
 
 // DraggableGrooveListBox implementation for external drag & drop
-void GrooveBrowser::DraggableGrooveListBox::mouseDrag(const juce::MouseEvent& e)
+GrooveBrowser::DraggableGrooveListBox::DraggableGrooveListBox(GrooveBrowser& owner)
+    : browser(owner)
 {
-    juce::ListBox::mouseDrag(e);
-    
-    // Start external drag after moving a certain distance
-    if (e.getDistanceFromDragStart() > 10)
+    // Add child mouse listener to intercept drag events from list row components
+    addMouseListener(&childListener, true);
+}
+
+GrooveBrowser::DraggableGrooveListBox::~DraggableGrooveListBox()
+{
+    removeMouseListener(&childListener);
+}
+
+void GrooveBrowser::DraggableGrooveListBox::startDragFromRow(int row)
+{
+    if (!dragStarted && row >= 0)
     {
+        dragStarted = true;
+        browser.selectedGrooveIndex = row;
+        selectRow(row);
         browser.startExternalDrag();
     }
+}
+
+void GrooveBrowser::DraggableGrooveListBox::mouseDrag(const juce::MouseEvent& e)
+{
+    // Start external drag after moving a certain distance
+    if (!dragStarted && e.getDistanceFromDragStart() > 8)
+    {
+        int row = getRowContainingPosition(e.getMouseDownX(), e.getMouseDownY());
+        startDragFromRow(row);
+        if (dragStarted) return;
+    }
+    
+    juce::ListBox::mouseDrag(e);
+}
+
+void GrooveBrowser::DraggableGrooveListBox::mouseUp(const juce::MouseEvent& e)
+{
+    dragStarted = false;
+    juce::ListBox::mouseUp(e);
+}
+
+// ChildMouseListener - intercepts drags from list row child components
+void GrooveBrowser::DraggableGrooveListBox::ChildMouseListener::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!listBox.dragStarted && e.getDistanceFromDragStart() > 8)
+    {
+        // Convert position to listbox coordinates
+        auto localPos = listBox.getLocalPoint(e.eventComponent, e.getMouseDownPosition());
+        int row = listBox.getRowContainingPosition(localPos.x, localPos.y);
+        listBox.startDragFromRow(row);
+    }
+}
+
+void GrooveBrowser::DraggableGrooveListBox::ChildMouseListener::mouseUp(const juce::MouseEvent& e)
+{
+    juce::ignoreUnused(e);
+    listBox.dragStarted = false;
 }
 
 GrooveBrowser::GrooveBrowser()
@@ -52,6 +101,7 @@ GrooveBrowser::GrooveBrowser()
     grooveListBox.setRowHeight(24);
     grooveListBox.setOutlineThickness(1);
     grooveListBox.setMultipleSelectionEnabled(false);
+    grooveListBox.setTooltip("Drag grooves to your DAW timeline.\nTip: Drop on track content area, not header.\nFile path is also copied to clipboard.");
     addAndMakeVisible(grooveListBox);
     
     // Bar count label
@@ -81,47 +131,25 @@ GrooveBrowser::GrooveBrowser()
     addToComposerButton.setColour(juce::TextButton::textColourOffId, textColour);
     addToComposerButton.onClick = [this]() { onAddToComposerClicked(); };
     addAndMakeVisible(addToComposerButton);
-    
-    // Drag to DAW button - explicit button for drag & drop
-    dragToDAWButton.setButtonText("Drag to DAW");
-    dragToDAWButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4A4A6A));
-    dragToDAWButton.setColour(juce::TextButton::textColourOffId, textColour);
-    dragToDAWButton.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
-    dragToDAWButton.addListener(this);
-    addAndMakeVisible(dragToDAWButton);
 }
 
 GrooveBrowser::~GrooveBrowser()
 {
-    dragToDAWButton.removeListener(this);
 }
 
 void GrooveBrowser::mouseDown(const juce::MouseEvent& e)
 {
-    // Check if the click is on the drag button
-    if (dragToDAWButton.getBounds().contains(e.getPosition()))
-    {
-        // We'll handle drag in mouseDrag
-    }
+    juce::ignoreUnused(e);
 }
 
 void GrooveBrowser::mouseDrag(const juce::MouseEvent& e)
 {
-    // If dragging from the drag button area
-    if (dragToDAWButton.getBounds().contains(e.getMouseDownPosition()) && 
-        e.getDistanceFromDragStart() > 5)
-    {
-        startExternalDrag();
-    }
+    juce::ignoreUnused(e);
 }
 
 void GrooveBrowser::buttonClicked(juce::Button* button)
 {
-    if (button == &dragToDAWButton)
-    {
-        // Show instructions - actual drag happens on mouse drag
-        DBG("GrooveBrowser: Click and drag this button to your DAW");
-    }
+    juce::ignoreUnused(button);
 }
 
 void GrooveBrowser::paint(juce::Graphics& g)
@@ -161,11 +189,7 @@ void GrooveBrowser::resized()
     bottomRow.removeFromLeft(10);
     
     // Add button
-    addToComposerButton.setBounds(bottomRow.removeFromLeft(60));
-    bottomRow.removeFromLeft(10);
-    
-    // Drag to DAW button takes the rest
-    dragToDAWButton.setBounds(bottomRow);
+    addToComposerButton.setBounds(bottomRow.removeFromLeft(80));
     
     rightPanel.removeFromBottom(5);
     
@@ -377,21 +401,9 @@ void GrooveBrowser::GrooveListModel::listBoxItemDoubleClicked(int row, const juc
 
 juce::var GrooveBrowser::GrooveListModel::getDragSourceDescription(const juce::SparseSet<int>& selectedRows)
 {
-    if (browser.grooveManager == nullptr || browser.selectedCategoryIndex < 0)
-        return {};
-    
-    if (selectedRows.isEmpty())
-        return {};
-    
-    int row = selectedRows[0];
-    
-    // Return a description that identifies this groove
-    juce::DynamicObject* obj = new juce::DynamicObject();
-    obj->setProperty("type", "groove");
-    obj->setProperty("categoryIndex", browser.selectedCategoryIndex);
-    obj->setProperty("grooveIndex", row);
-    
-    return juce::var(obj);
+    juce::ignoreUnused(selectedRows);
+    // Return empty to disable JUCE's internal drag - we use external file drag instead
+    return {};
 }
 
 /*
@@ -412,6 +424,15 @@ void GrooveBrowser::startExternalDrag()
         return;
     }
     
+    // If a parent has set a drag callback, delegate to them
+    // This allows parent DragAndDropContainers to handle the drag
+    if (onGrooveDragStarted)
+    {
+        DBG("GrooveBrowser: Delegating drag to parent handler");
+        onGrooveDragStarted(selectedCategoryIndex, selectedGrooveIndex);
+        return;
+    }
+    
     // Get the MIDI file path for the selected groove
     juce::File midiFile = grooveManager->exportGrooveToTempFile(selectedCategoryIndex, selectedGrooveIndex);
     
@@ -421,11 +442,16 @@ void GrooveBrowser::startExternalDrag()
     {
         isDragging = true;
         
+        // Also copy the file path to clipboard as a fallback
+        // Users can paste in DAWs that don't support drag-and-drop well
+        juce::SystemClipboard::copyTextToClipboard(midiFile.getFullPathName());
+        DBG("GrooveBrowser: Copied to clipboard: " + midiFile.getFullPathName());
+        
         // Start external drag with the MIDI file
         juce::StringArray files;
         files.add(midiFile.getFullPathName());
         
-        bool success = performExternalDragDropOfFiles(files, false, this, [this]() {
+        bool success = performExternalDragDropOfFiles(files, true, nullptr, [this]() {
             isDragging = false;
             DBG("GrooveBrowser: External drag completed");
         });
@@ -433,7 +459,7 @@ void GrooveBrowser::startExternalDrag()
         if (!success)
         {
             isDragging = false;
-            DBG("GrooveBrowser: Failed to start external drag");
+            DBG("GrooveBrowser: Failed to start external drag - file path copied to clipboard");
         }
     }
     else
@@ -441,4 +467,5 @@ void GrooveBrowser::startExternalDrag()
         DBG("GrooveBrowser: MIDI file does not exist: " + midiFile.getFullPathName());
     }
 }
+
 

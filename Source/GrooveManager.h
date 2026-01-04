@@ -139,6 +139,9 @@ private:
     // Calculate the length of a groove in beats from its MIDI events
     double calculateGrooveLength(const Groove& groove);
     
+    // Clean up old exported MIDI files (called on startup)
+    void cleanupOldExports();
+    
     juce::File groovesPath;
     std::vector<GrooveCategory> categories;
     

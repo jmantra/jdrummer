@@ -16,7 +16,9 @@
 // Forward declaration
 class JdrummerAudioProcessor;
 
-class GroovesPanel : public juce::Component
+class GroovesPanel : public juce::Component,
+                      public juce::DragAndDropContainer,
+                      public juce::Timer
 {
 public:
     GroovesPanel();
@@ -34,6 +36,9 @@ public:
     
     // Update playing state
     void updatePlayingState();
+    
+    // Timer callback to update BPM display
+    void timerCallback() override;
 
 private:
     JdrummerAudioProcessor* audioProcessor = nullptr;
@@ -58,10 +63,15 @@ private:
     // Stop preview
     void stopPreview();
     
+    // Handle external drag from groove browser
+    void startGrooveDrag(int categoryIndex, int grooveIndex);
+    bool isDragging = false;
+    
     // Colors
     juce::Colour backgroundColour{0xFF1A1A2E};
     juce::Colour textColour{0xFFEEEEEE};
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GroovesPanel)
 };
+
 
