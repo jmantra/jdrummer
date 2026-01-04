@@ -493,7 +493,7 @@ This project is open source. See LICENSE file for details.
 
 - Thanks to the JUCE team for their excellent framework
 - TinySoundFont by Bernhard Schelling
-- minibpm by Breakfast Quay
+- minibpm by BreakfastQuay
 - Soundfonts by:
    - S. Christian Collins  **[GeneralUser GS Soundfont](https://schristiancollins.com/generaluser.php)** 
    -  **[AVL Drumkits by Glen MacArthur ](https://www.bandshed.net/avldrumkits/)** licensed under  CC-BY-SA 3.0
