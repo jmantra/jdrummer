@@ -36,7 +36,7 @@ An open-source drum machine VST3 plugin built with the JUCE framework. JDrummer 
 
 ### 🥁 Drum Pads
 - **16-pad drum grid** with velocity-sensitive playback
-- **Multiple SoundFont kits** - Ships with 29 drum kits including:
+- **Multiple Soundfont kits** - Ships with 29 drum kits including:
   - Standard acoustic kits (Standard, Room Drums, Power Drums, Jazz Drums)
   - Electronic kits (808, Electronic Drums, Dance Drums, House Kit)
   - Specialty kits (Orchestral Percussion, Brush Drums, NIN Drumkit)
@@ -45,6 +45,8 @@ An open-source drum machine VST3 plugin built with the JUCE framework. JDrummer 
 - Pan control (left/right)
 - Solo and mute options
 - **Dynamic kit loading** - Add your own .sf2 SoundFont files to expand your library
+- **Multi Out Support** - Fan each drum pience to an individual track for mixing
+
 
 ### 🎵 Grooves Browser
 - **Extensive groove library** organized by category:
@@ -61,6 +63,7 @@ An open-source drum machine VST3 plugin built with the JUCE framework. JDrummer 
 - **Preview functionality** - Audition grooves before adding them to your project
 - **Drag and drop** - Drag any groove directly into your DAW as a MIDI clip
 - **Bar selection** - Choose how many bars of a groove to use (1-16 bars)
+- **Dynamic Groove Loading** add your own drum grooves
 
 ### 🎼 Composer
 - **Build complete drum parts** by combining multiple grooves
