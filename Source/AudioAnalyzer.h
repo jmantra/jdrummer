@@ -23,6 +23,7 @@
 struct RhythmPattern
 {
     double bpm = 120.0;                     // Detected tempo
+    std::vector<double> alternativeBpms;     // Alternative BPM candidates
     double confidence = 0.0;                 // Confidence in BPM detection (0-1)
     std::vector<double> onsetTimesBeats;    // Onset times in beats
     int beatsPerBar = 4;                     // Assumed time signature
@@ -108,4 +109,5 @@ private:
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioAnalyzer)
 };
+
 

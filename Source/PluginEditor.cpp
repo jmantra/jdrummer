@@ -291,6 +291,10 @@ void JdrummerAudioProcessorEditor::setupCallbacks()
         audioProcessor.getSoundFontManager().setNotePan(note, pan);
     };
     
+    padControls.onMuteChanged = [this](int note, bool muted) {
+        audioProcessor.getSoundFontManager().setNoteMute(note, muted);
+    };
+    
     /*
         STATE RESTORATION CALLBACK
         --------------------------
@@ -301,10 +305,15 @@ void JdrummerAudioProcessorEditor::setupCallbacks()
         message thread (UI thread). This is important because
         state restoration might happen on a different thread.
     */
-    audioProcessor.onKitLoaded = [this]() {
-        juce::MessageManager::callAsync([this]() {
-            populateKitComboBox();
-            updatePadControlsForSelectedPad();
+    // Use SafePointer to ensure the editor still exists when the callback fires
+    juce::Component::SafePointer<JdrummerAudioProcessorEditor> safeThis(this);
+    audioProcessor.onKitLoaded = [safeThis]() {
+        juce::MessageManager::callAsync([safeThis]() {
+            if (safeThis != nullptr)
+            {
+                safeThis->populateKitComboBox();
+                safeThis->updatePadControlsForSelectedPad();
+            }
         });
     };
 }
@@ -325,6 +334,7 @@ void JdrummerAudioProcessorEditor::updatePadControlsForSelectedPad()
     // Get current values from the processor
     padControls.setVolume(audioProcessor.getSoundFontManager().getNoteVolume(note));
     padControls.setPan(audioProcessor.getSoundFontManager().getNotePan(note));
+    padControls.setMute(audioProcessor.getSoundFontManager().getNoteMute(note));
 }
 
 /*
@@ -487,7 +497,7 @@ void JdrummerAudioProcessorEditor::resized()
         BOTTOM CONTROLS AREA (140px) - Only for Drum Kit tab
         ----------------------------
     */
-    auto bottomBounds = bounds.removeFromBottom(140);
+    auto bottomBounds = bounds.removeFromBottom(170);
     bottomBounds = bottomBounds.reduced(20, 10);
     padControls.setBounds(bottomBounds);
     

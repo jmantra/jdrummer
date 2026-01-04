@@ -23,6 +23,7 @@
 #include "JuceHeader.h"        // JUCE framework - provides audio, UI, and utility classes
 #include "SoundFontManager.h"  // Our custom class for managing SF2 soundfonts
 #include "GrooveManager.h"     // Our custom class for managing groove MIDI files
+#include <array>
 
 /*
     CLASS DECLARATION
@@ -135,6 +136,13 @@ public:
     void triggerNote(int note, float velocity);
     void releaseNote(int note);
     
+    // Multi-out support: Number of individual output groups (one per pad)
+    static constexpr int NUM_OUTPUT_GROUPS = 16;
+    
+    // Map MIDI note to output group index (0-15)
+    // Returns -1 if note doesn't map to any group
+    static int getOutputGroupForNote(int midiNote);
+    
     // Get current DAW tempo (for UI display)
     double getCurrentBPM() const { return currentBPM; }
     bool isHostPlaying() const { return hostIsPlaying; }
@@ -184,6 +192,9 @@ private:
     // Buffer for rendering audio from the soundfont
     // std::vector is a dynamic array that can grow/shrink
     std::vector<float> renderBuffer;
+    
+    // Multi-out buffers for individual pad outputs
+    std::array<std::vector<float>, NUM_OUTPUT_GROUPS> multiOutBuffers;
     
     // Track notes triggered by MIDI for UI visualization
     std::vector<int> recentlyTriggeredNotes;

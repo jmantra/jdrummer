@@ -52,6 +52,7 @@ public:
     std::function<void(int categoryIndex, int grooveIndex)> onGrooveSelected;
     std::function<void(int categoryIndex, int grooveIndex)> onGrooveDoubleClicked;
     std::function<void(int categoryIndex, int grooveIndex, int barCount)> onGrooveAddToComposer;
+    std::function<void(int categoryIndex, int grooveIndex)> onGrooveDragStarted;  // For external drag delegation
     
     // Get the selected bar count for adding to composer
     int getSelectedBarCount() const;
@@ -65,12 +66,31 @@ private:
     class DraggableGrooveListBox : public juce::ListBox
     {
     public:
-        DraggableGrooveListBox(GrooveBrowser& owner) : browser(owner) {}
+        DraggableGrooveListBox(GrooveBrowser& owner);
+        ~DraggableGrooveListBox() override;
         
         void mouseDrag(const juce::MouseEvent& e) override;
+        void mouseUp(const juce::MouseEvent& e) override;
+        
+        // Helper to trigger drag from browser
+        void startDragFromRow(int row);
         
     private:
         GrooveBrowser& browser;
+        bool dragStarted = false;
+        
+        // Intercepts mouse events from child components (list rows)
+        class ChildMouseListener : public juce::MouseListener
+        {
+        public:
+            ChildMouseListener(DraggableGrooveListBox& lb) : listBox(lb) {}
+            void mouseDrag(const juce::MouseEvent& e) override;
+            void mouseUp(const juce::MouseEvent& e) override;
+        private:
+            DraggableGrooveListBox& listBox;
+        };
+        
+        ChildMouseListener childListener{*this};
     };
     
     // Internal list box model for grooves (within selected category)
@@ -97,7 +117,6 @@ private:
     juce::ListBox categoryListBox;
     DraggableGrooveListBox grooveListBox;
     juce::TextButton addToComposerButton;
-    juce::TextButton dragToDAWButton;  // Explicit drag button for DAW
     juce::ComboBox barCountComboBox;   // How many bars to add
     juce::Label barCountLabel;
     
@@ -127,4 +146,5 @@ private:
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GrooveBrowser)
 };
+
 

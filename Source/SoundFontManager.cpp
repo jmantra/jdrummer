@@ -26,38 +26,45 @@ SoundFontManager::SoundFontManager()
         ----------------------------
         GM (General MIDI) drum notes range from 35 to 81.
         We initialize all of them with default values.
-        
-        This loop uses the [] operator to insert key-value pairs.
     */
     for (int note = 35; note <= 81; ++note)
     {
         noteVolumes[note] = 0.5f;  // Default to 50% volume
         notePans[note] = 0.0f;     // Center pan
+        noteMutes[note] = false;   // Not muted
+    }
+    
+    // Initialize all group pointers to nullptr
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        soundFontGroups[i] = nullptr;
     }
 }
 
 /*
     DESTRUCTOR - CLEANUP
     --------------------
-    When this object is destroyed, we must free the soundfont.
-    
-    This is RAII (Resource Acquisition Is Initialization):
-    - Resources acquired in constructor (or loadKit)
-    - Released in destructor
-    - No manual cleanup needed by the caller
-    
-    Without this, we'd have a MEMORY LEAK - the soundfont data
-    would stay in memory forever!
+    When this object is destroyed, we must free all soundfont instances.
 */
 SoundFontManager::~SoundFontManager()
 {
-    // ScopedLock is RAII for locks - acquires in constructor, releases in destructor
     juce::ScopedLock sl(lock);
     
+    // Close main soundfont
     if (soundFont != nullptr)
     {
-        tsf_close(soundFont);  // TinySoundFont's cleanup function
-        soundFont = nullptr;   // Good practice: set to null after delete
+        tsf_close(soundFont);
+        soundFont = nullptr;
+    }
+    
+    // Close all group soundfonts
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        if (soundFontGroups[i] != nullptr)
+        {
+            tsf_close(soundFontGroups[i]);
+            soundFontGroups[i] = nullptr;
+        }
     }
 }
 
@@ -65,25 +72,11 @@ juce::StringArray SoundFontManager::getAvailableKits() const
 {
     juce::StringArray kits;
     
-    // Check if the path is valid
     if (soundFontsPath.exists() && soundFontsPath.isDirectory())
     {
-        /*
-            FIND FILES
-            ----------
-            findChildFiles returns an Array of matching files.
-            
-            Parameters:
-            - juce::File::findFiles = only files, not directories
-            - false = don't search subdirectories
-            - "*.sf2" = only files with .sf2 extension
-        */
         auto files = soundFontsPath.findChildFiles(juce::File::findFiles, false, "*.sf2");
-        
-        // Sort alphabetically for consistent ordering
         files.sort();
         
-        // Extract just the filenames without the extension
         for (const auto& file : files)
         {
             kits.add(file.getFileNameWithoutExtension());
@@ -93,50 +86,47 @@ juce::StringArray SoundFontManager::getAvailableKits() const
     return kits;
 }
 
+juce::String SoundFontManager::getCurrentKitName() const
+{
+    juce::ScopedLock sl(lock);
+    return currentKitName;
+}
+
 /*
     LOAD KIT
     --------
-    Loads a soundfont file and prepares it for playback.
-    
-    Returns: true on success, false on failure
-    
-    Thread safety: Uses a lock because this might be called from the UI
-    thread while the audio thread is using the soundfont.
+    Loads a soundfont file for the main output AND all individual output groups.
 */
 bool SoundFontManager::loadKit(const juce::String& kitName)
 {
-    juce::ScopedLock sl(lock);  // Acquire lock for this scope
+    juce::ScopedLock sl(lock);
     
-    // Build the full path to the SF2 file
     auto kitFile = soundFontsPath.getChildFile(kitName + ".sf2");
     
     if (!kitFile.existsAsFile())
     {
-        // DBG is JUCE's debug print - only outputs in debug builds
         DBG("SoundFont file not found: " + kitFile.getFullPathName());
         return false;
     }
     
-    /*
-        CLEANUP PREVIOUS SOUNDFONT
-        --------------------------
-        Before loading a new one, we must close the old one.
-        Otherwise we'd leak memory.
-    */
+    // Cleanup previous main soundfont
     if (soundFont != nullptr)
     {
         tsf_close(soundFont);
         soundFont = nullptr;
     }
     
-    /*
-        LOAD THE SOUNDFONT
-        ------------------
-        tsf_load_filename() is a C function from TinySoundFont.
-        
-        toRawUTF8() converts juce::String to a C-style string (const char*).
-        C libraries don't understand juce::String!
-    */
+    // Cleanup previous group soundfonts
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        if (soundFontGroups[i] != nullptr)
+        {
+            tsf_close(soundFontGroups[i]);
+            soundFontGroups[i] = nullptr;
+        }
+    }
+    
+    // Load main soundfont
     soundFont = tsf_load_filename(kitFile.getFullPathName().toRawUTF8());
     
     if (soundFont == nullptr)
@@ -145,36 +135,27 @@ bool SoundFontManager::loadKit(const juce::String& kitName)
         return false;
     }
     
-    /*
-        CONFIGURE THE SOUNDFONT
-        -----------------------
-        TSF_STEREO_INTERLEAVED means output format is: L0,R0,L1,R1,L2,R2...
-        Sample rate must match what the audio system is using.
-        Last parameter (0.0f) is gain adjustment.
-    */
+    // Configure main soundfont
     tsf_set_output(soundFont, TSF_STEREO_INTERLEAVED, 
                    static_cast<int>(currentSampleRate), 0.0f);
-    
-    // Limit polyphony to prevent CPU overload
     tsf_set_max_voices(soundFont, 64);
+    
+    // Load and configure group soundfonts for multi-out
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        soundFontGroups[i] = tsf_load_filename(kitFile.getFullPathName().toRawUTF8());
+        if (soundFontGroups[i] != nullptr)
+        {
+            tsf_set_output(soundFontGroups[i], TSF_STEREO_INTERLEAVED,
+                           static_cast<int>(currentSampleRate), 0.0f);
+            tsf_set_max_voices(soundFontGroups[i], 8);  // Fewer voices per group
+        }
+    }
     
     currentKitName = kitName;
     
-    /*
-        DEBUG OUTPUT
-        ------------
-        Print information about the loaded soundfont.
-        DBG only prints in debug builds (compiled with DEBUG defined).
-    */
     int presetCount = tsf_get_presetcount(soundFont);
     DBG("Loaded soundfont: " + kitName + " with " + juce::String(presetCount) + " presets");
-    
-    // List first few presets for debugging
-    for (int i = 0; i < juce::jmin(presetCount, 5); ++i)
-    {
-        const char* presetName = tsf_get_presetname(soundFont, i);
-        DBG("  Preset " + juce::String(i) + ": " + juce::String(presetName ? presetName : "unnamed"));
-    }
     
     return true;
 }
@@ -184,34 +165,34 @@ void SoundFontManager::setSoundFontsPath(const juce::File& path)
     soundFontsPath = path;
 }
 
-/*
-    SET SAMPLE RATE
-    ---------------
-    Must be called when the audio system's sample rate changes.
-    Common rates: 44100, 48000, 88200, 96000 Hz
-*/
 void SoundFontManager::setSampleRate(double sampleRate)
 {
     juce::ScopedLock sl(lock);
     currentSampleRate = sampleRate;
     
-    // Update the soundfont if already loaded
+    // Update main soundfont
     if (soundFont != nullptr)
     {
         tsf_set_output(soundFont, TSF_STEREO_INTERLEAVED, 
                        static_cast<int>(sampleRate), 0.0f);
     }
+    
+    // Update all group soundfonts
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        if (soundFontGroups[i] != nullptr)
+        {
+            tsf_set_output(soundFontGroups[i], TSF_STEREO_INTERLEAVED,
+                           static_cast<int>(sampleRate), 0.0f);
+        }
+    }
 }
 
 /*
-    NOTE ON
-    -------
-    Triggers a note in the soundfont.
-    
-    How soundfonts work:
-    - A preset (instrument) contains samples mapped to note ranges
-    - When you play a note, the soundfont finds the right sample
-    - The sample is pitched and played with the given velocity
+    NOTE ON - Main output
+    ---------------------
+    Triggers a note on the main soundfont instance.
+    Applies per-note volume, pan, and mute settings.
 */
 void SoundFontManager::noteOn(int note, float velocity)
 {
@@ -220,30 +201,28 @@ void SoundFontManager::noteOn(int note, float velocity)
     if (soundFont == nullptr)
         return;
     
-    /*
-        APPLY PER-NOTE VOLUME
-        ---------------------
-        .count() returns 1 if the key exists, 0 if not.
-        This is safer than just using [] which would create a default entry.
-    */
-    float vol = noteVolumes.count(note) ? noteVolumes[note] : 0.5f;  // Default 50%
+    // Check if muted
+    if (noteMutes.count(note) && noteMutes[note])
+        return;
+    
+    // Apply per-note volume
+    float vol = noteVolumes.count(note) ? noteVolumes[note] : 0.5f;
     float adjustedVelocity = velocity * vol;
     
-    /*
-        TRIGGER THE NOTE
-        ----------------
-        tsf_note_on parameters:
-        - soundFont: the loaded soundfont
-        - 0: preset index (first preset, usually the drum kit)
-        - note: MIDI note number
-        - adjustedVelocity: how hard the note was hit (0.0-1.0)
-    */
-    int presetIndex = 0;
-    int presetCount = tsf_get_presetcount(soundFont);
+    // Apply per-note pan
+    float pan = notePans.count(note) ? notePans[note] : 0.0f;
+    // TSF pan: 0.0 = left, 0.5 = center, 1.0 = right
+    // Our pan: -1.0 = left, 0.0 = center, 1.0 = right
+    // Invert because TSF has reversed pan direction
+    float tsfPan = (1.0f - pan) / 2.0f;
     
+    int presetCount = tsf_get_presetcount(soundFont);
     if (presetCount > 0)
     {
-        tsf_note_on(soundFont, presetIndex, note, adjustedVelocity);
+        // Use channel 9 for drums (GM standard) with channel-based note triggering
+        tsf_channel_set_presetindex(soundFont, 9, 0);  // Set preset on channel 9
+        tsf_channel_set_pan(soundFont, 9, tsfPan);
+        tsf_channel_note_on(soundFont, 9, note, adjustedVelocity);
     }
 }
 
@@ -254,23 +233,12 @@ void SoundFontManager::noteOff(int note)
     if (soundFont == nullptr)
         return;
     
-    // Release the note (for instruments with sustain, not usually drums)
-    tsf_note_off(soundFont, 0, note);
+    // Release the note using channel 9 (GM drum channel)
+    tsf_channel_note_off(soundFont, 9, note);
 }
 
 /*
-    RENDER AUDIO
-    ------------
-    This is called by the audio thread to generate samples.
-    
-    Parameters:
-    - outputBuffer: pointer to array of floats
-    - numSamples: number of sample FRAMES to generate
-    
-    Output is stereo interleaved, so buffer needs numSamples * 2 floats.
-    
-    IMPORTANT: This runs on the audio thread!
-    Must be fast and predictable.
+    RENDER AUDIO - Main output only
 */
 void SoundFontManager::renderAudio(float* outputBuffer, int numSamples)
 {
@@ -278,36 +246,13 @@ void SoundFontManager::renderAudio(float* outputBuffer, int numSamples)
     
     if (soundFont == nullptr)
     {
-        /*
-            MEMSET FOR SILENCE
-            ------------------
-            If no soundfont is loaded, output silence.
-            
-            memset fills memory with a byte value.
-            0 = silence for floating-point audio.
-            
-            sizeof(float) * numSamples * 2 = total bytes for stereo output
-        */
         std::memset(outputBuffer, 0, sizeof(float) * numSamples * 2);
         return;
     }
     
-    /*
-        RENDER FROM SOUNDFONT
-        ---------------------
-        TinySoundFont generates audio samples from all playing notes.
-        
-        Last parameter (0) means "clear buffer first" (not mix).
-    */
     tsf_render_float(soundFont, outputBuffer, numSamples, 0);
 }
 
-/*
-    PER-NOTE VOLUME/PAN SETTERS
-    ---------------------------
-    jlimit(min, max, value) clamps value to the range [min, max].
-    This prevents invalid values from causing problems.
-*/
 void SoundFontManager::setNoteVolume(int note, float volume)
 {
     juce::ScopedLock sl(lock);
@@ -320,22 +265,125 @@ void SoundFontManager::setNotePan(int note, float pan)
     notePans[note] = juce::jlimit(-1.0f, 1.0f, pan);
 }
 
-/*
-    GETTERS WITH DEFAULT VALUES
-    ---------------------------
-    These safely return values, using 1.0/0.0 if the note isn't in the map.
-    
-    .find() returns an iterator to the element, or .end() if not found.
-    This is more efficient than calling .count() then [] separately.
-*/
 float SoundFontManager::getNoteVolume(int note) const
 {
     auto it = noteVolumes.find(note);
-    return it != noteVolumes.end() ? it->second : 0.5f;  // Default 50%
+    return it != noteVolumes.end() ? it->second : 0.5f;
 }
 
 float SoundFontManager::getNotePan(int note) const
 {
     auto it = notePans.find(note);
     return it != notePans.end() ? it->second : 0.0f;
+}
+
+void SoundFontManager::setNoteMute(int note, bool muted)
+{
+    juce::ScopedLock sl(lock);
+    noteMutes[note] = muted;
+}
+
+bool SoundFontManager::getNoteMute(int note) const
+{
+    auto it = noteMutes.find(note);
+    return it != noteMutes.end() ? it->second : false;
+}
+
+// ===== MULTI-OUT SUPPORT =====
+
+void SoundFontManager::setNoteToGroupMapper(std::function<int(int)> mapper)
+{
+    juce::ScopedLock sl(lock);
+    noteToGroupMapper = mapper;
+}
+
+/*
+    NOTE ON TO GROUP - Multi-out
+    ----------------------------
+    Triggers a note on a specific output group's soundfont instance.
+*/
+void SoundFontManager::noteOnToGroup(int note, float velocity, int groupIndex)
+{
+    juce::ScopedLock sl(lock);
+    
+    if (groupIndex < 0 || groupIndex >= NUM_OUTPUT_GROUPS)
+        return;
+    
+    tsf* sfGroup = soundFontGroups[groupIndex];
+    if (sfGroup == nullptr)
+        return;
+    
+    // Check if muted
+    if (noteMutes.count(note) && noteMutes[note])
+        return;
+    
+    // Apply per-note volume
+    float vol = noteVolumes.count(note) ? noteVolumes[note] : 0.5f;
+    float adjustedVelocity = velocity * vol;
+    
+    // Apply per-note pan (inverted for TSF)
+    float pan = notePans.count(note) ? notePans[note] : 0.0f;
+    float tsfPan = (1.0f - pan) / 2.0f;
+    
+    int presetCount = tsf_get_presetcount(sfGroup);
+    if (presetCount > 0)
+    {
+        // Use channel 9 for drums with channel-based note triggering
+        tsf_channel_set_presetindex(sfGroup, 9, 0);
+        tsf_channel_set_pan(sfGroup, 9, tsfPan);
+        tsf_channel_note_on(sfGroup, 9, note, adjustedVelocity);
+    }
+}
+
+void SoundFontManager::noteOffToGroup(int note, int groupIndex)
+{
+    juce::ScopedLock sl(lock);
+    
+    if (groupIndex < 0 || groupIndex >= NUM_OUTPUT_GROUPS)
+        return;
+    
+    tsf* sfGroup = soundFontGroups[groupIndex];
+    if (sfGroup == nullptr)
+        return;
+    
+    // Release the note using channel 9 (GM drum channel)
+    tsf_channel_note_off(sfGroup, 9, note);
+}
+
+/*
+    RENDER AUDIO MULTI-OUT
+    ----------------------
+    Renders the main mix and all individual output groups.
+*/
+void SoundFontManager::renderAudioMultiOut(float* mainBuffer,
+                                            std::array<float*, NUM_OUTPUT_GROUPS>& groupBuffers,
+                                            int numSamples)
+{
+    juce::ScopedLock sl(lock);
+    
+    // Render main mix
+    if (soundFont != nullptr)
+    {
+        tsf_render_float(soundFont, mainBuffer, numSamples, 0);
+    }
+    else
+    {
+        std::memset(mainBuffer, 0, sizeof(float) * numSamples * 2);
+    }
+    
+    // Render each output group
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        if (groupBuffers[i] != nullptr)
+        {
+            if (soundFontGroups[i] != nullptr)
+            {
+                tsf_render_float(soundFontGroups[i], groupBuffers[i], numSamples, 0);
+            }
+            else
+            {
+                std::memset(groupBuffers[i], 0, sizeof(float) * numSamples * 2);
+            }
+        }
+    }
 }

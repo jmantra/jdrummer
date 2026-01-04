@@ -1,141 +1,165 @@
+/*
+    PadControls.cpp
+    ===============
+    
+    Implementation of per-pad volume, pan, and mute controls.
+*/
+
 #include "PadControls.h"
 
 PadControls::PadControls()
 {
-    // Title
-    titleLabel.setText("Pad Controls", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(14.0f, juce::Font::bold));
-    titleLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFCCCCCC));
+    // Title label showing selected pad name
+    titleLabel.setText("Kick", juce::dontSendNotification);
+    titleLabel.setFont(juce::Font(16.0f, juce::Font::bold));
+    titleLabel.setColour(juce::Label::textColourId, accentColour);
+    titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);
     
-    // Pad name
-    padNameLabel.setText("Kick", juce::dontSendNotification);
-    padNameLabel.setFont(juce::Font(18.0f, juce::Font::bold));
-    padNameLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF00BFFF));
-    padNameLabel.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(padNameLabel);
+    // Volume label
+    volumeLabel.setText("Volume", juce::dontSendNotification);
+    volumeLabel.setFont(juce::Font(12.0f));
+    volumeLabel.setColour(juce::Label::textColourId, textColour);
+    volumeLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(volumeLabel);
     
     // Volume slider
     volumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    volumeSlider.setRange(0.0, 1.0, 0.01);
+    volumeSlider.setValue(0.5);
     volumeSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
-    volumeSlider.setRange(0.0, 100.0, 1.0);
-    volumeSlider.setValue(100.0, juce::dontSendNotification);
     volumeSlider.setColour(juce::Slider::trackColourId, juce::Colour(0xFF00BFFF));
     volumeSlider.setColour(juce::Slider::thumbColourId, juce::Colour(0xFFFFFFFF));
-    volumeSlider.setColour(juce::Slider::backgroundColourId, juce::Colour(0xFF333333));
-    volumeSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xFFEEEEEE));
-    volumeSlider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xFF2A2A2A));
-    volumeSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xFF444444));
-    volumeSlider.setTextValueSuffix(" %");
-    volumeSlider.addListener(this);
+    volumeSlider.onValueChange = [this]() {
+        if (onVolumeChanged)
+            onVolumeChanged(selectedNote, static_cast<float>(volumeSlider.getValue()));
+    };
     addAndMakeVisible(volumeSlider);
     
-    volumeLabel.setText("Volume", juce::dontSendNotification);
-    volumeLabel.setFont(juce::Font(12.0f));
-    volumeLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
-    volumeLabel.attachToComponent(&volumeSlider, true);
-    addAndMakeVisible(volumeLabel);
+    // Pan label
+    panLabel.setText("Pan", juce::dontSendNotification);
+    panLabel.setFont(juce::Font(12.0f));
+    panLabel.setColour(juce::Label::textColourId, textColour);
+    panLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(panLabel);
     
     // Pan slider
     panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    panSlider.setRange(-1.0, 1.0, 0.01);
+    panSlider.setValue(0.0);
     panSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
-    panSlider.setRange(-100.0, 100.0, 1.0);
-    panSlider.setValue(0.0, juce::dontSendNotification);
-    panSlider.setColour(juce::Slider::trackColourId, juce::Colour(0xFFFF5722));
-    panSlider.setColour(juce::Slider::thumbColourId, juce::Colour(0xFFFFFFFF));
-    panSlider.setColour(juce::Slider::backgroundColourId, juce::Colour(0xFF333333));
-    panSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xFFEEEEEE));
-    panSlider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xFF2A2A2A));
-    panSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xFF444444));
-    panSlider.addListener(this);
+    panSlider.setColour(juce::Slider::trackColourId, juce::Colour(0xFF666666));
+    panSlider.setColour(juce::Slider::thumbColourId, juce::Colour(0xFFCCCCCC));
+    panSlider.onValueChange = [this]() {
+        if (onPanChanged)
+            onPanChanged(selectedNote, static_cast<float>(panSlider.getValue()));
+    };
     addAndMakeVisible(panSlider);
     
-    panLabel.setText("Pan", juce::dontSendNotification);
-    panLabel.setFont(juce::Font(12.0f));
-    panLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
-    panLabel.attachToComponent(&panSlider, true);
-    addAndMakeVisible(panLabel);
+    // Mute button
+    muteButton.setButtonText("MUTE");
+    muteButton.setClickingTogglesState(true);
+    muteButton.onClick = [this]() {
+        updateMuteButtonAppearance();
+        if (onMuteChanged)
+            onMuteChanged(selectedNote, muteButton.getToggleState());
+    };
+    updateMuteButtonAppearance();
+    addAndMakeVisible(muteButton);
 }
 
 PadControls::~PadControls()
 {
-    volumeSlider.removeListener(this);
-    panSlider.removeListener(this);
 }
 
 void PadControls::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xFF1E1E1E));
+    g.fillAll(backgroundColour);
     
-    // Draw subtle border
-    g.setColour(juce::Colour(0xFF333333));
+    // Border
+    g.setColour(juce::Colour(0xFF333344));
     g.drawRect(getLocalBounds(), 1);
 }
 
 void PadControls::resized()
 {
-    auto bounds = getLocalBounds().reduced(15);
+    auto bounds = getLocalBounds().reduced(10);
     
-    auto topArea = bounds.removeFromTop(50);
-    titleLabel.setBounds(topArea.removeFromTop(20));
-    topArea.removeFromTop(5);
-    padNameLabel.setBounds(topArea);
+    // Title at top
+    titleLabel.setBounds(bounds.removeFromTop(25));
+    bounds.removeFromTop(5);
     
-    bounds.removeFromTop(15);
+    // Volume row
+    auto volumeRow = bounds.removeFromTop(25);
+    volumeLabel.setBounds(volumeRow.removeFromLeft(50));
+    volumeSlider.setBounds(volumeRow);
     
-    // Leave space for labels on the left
-    auto sliderArea = bounds;
-    sliderArea.removeFromLeft(60);  // Space for labels
+    bounds.removeFromTop(5);
     
-    auto volumeArea = sliderArea.removeFromTop(30);
-    volumeSlider.setBounds(volumeArea);
+    // Pan row
+    auto panRow = bounds.removeFromTop(25);
+    panLabel.setBounds(panRow.removeFromLeft(50));
+    panSlider.setBounds(panRow);
     
-    sliderArea.removeFromTop(15);
+    bounds.removeFromTop(10);
     
-    auto panArea = sliderArea.removeFromTop(30);
-    panSlider.setBounds(panArea);
+    // Mute button - large and prominent
+    auto muteRow = bounds.removeFromTop(50);
+    muteButton.setBounds(muteRow.withSizeKeepingCentre(200, 40));
 }
 
 void PadControls::setSelectedPad(int midiNote, const juce::String& padName)
 {
-    currentNote = midiNote;
-    padNameLabel.setText(padName + " (Note " + juce::String(midiNote) + ")", juce::dontSendNotification);
+    selectedNote = midiNote;
+    selectedPadName = padName;
+    titleLabel.setText(padName, juce::dontSendNotification);
 }
 
 void PadControls::setVolume(float volume)
 {
-    volumeSlider.setValue(volume * 100.0, juce::dontSendNotification);
-}
-
-void PadControls::setPan(float pan)
-{
-    panSlider.setValue(pan * 100.0, juce::dontSendNotification);
+    volumeSlider.setValue(volume, juce::dontSendNotification);
 }
 
 float PadControls::getVolume() const
 {
-    return static_cast<float>(volumeSlider.getValue() / 100.0);
+    return static_cast<float>(volumeSlider.getValue());
+}
+
+void PadControls::setPan(float pan)
+{
+    panSlider.setValue(pan, juce::dontSendNotification);
 }
 
 float PadControls::getPan() const
 {
-    return static_cast<float>(panSlider.getValue() / 100.0);
+    return static_cast<float>(panSlider.getValue());
 }
 
-void PadControls::sliderValueChanged(juce::Slider* slider)
+void PadControls::setMute(bool muted)
 {
-    if (slider == &volumeSlider)
-    {
-        if (onVolumeChanged)
-            onVolumeChanged(currentNote, getVolume());
-    }
-    else if (slider == &panSlider)
-    {
-        if (onPanChanged)
-            onPanChanged(currentNote, getPan());
-    }
+    muteButton.setToggleState(muted, juce::dontSendNotification);
+    updateMuteButtonAppearance();
 }
 
+bool PadControls::getMute() const
+{
+    return muteButton.getToggleState();
+}
 
-
-
+void PadControls::updateMuteButtonAppearance()
+{
+    if (muteButton.getToggleState())
+    {
+        // Muted - red background
+        muteButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFCC3333));
+        muteButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFFFFFFF));
+        muteButton.setButtonText("MUTED");
+    }
+    else
+    {
+        // Not muted - dark background
+        muteButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333344));
+        muteButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
+        muteButton.setButtonText("MUTE");
+    }
+}

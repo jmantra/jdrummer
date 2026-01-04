@@ -19,17 +19,47 @@
 #include "../AudioAnalyzer.h"
 #include "../GrooveManager.h"
 #include "GrooveComposer.h"
+#include "GrooveBrowser.h"
 
 // Forward declaration
 class JdrummerAudioProcessor;
 
 class BandmatePanel : public juce::Component,
                       public juce::FileDragAndDropTarget,
+                      public juce::DragAndDropContainer,
                       public juce::Timer
 {
 public:
     BandmatePanel();
     ~BandmatePanel() override;
+    
+    // Custom ListBox that supports external drag & drop to DAWs
+    class DraggableMatchesListBox : public juce::ListBox
+    {
+    public:
+        DraggableMatchesListBox(BandmatePanel& owner);
+        ~DraggableMatchesListBox() override;
+        
+        void mouseDrag(const juce::MouseEvent& e) override;
+        void mouseUp(const juce::MouseEvent& e) override;
+        void startDragFromRow(int row);
+        
+    private:
+        BandmatePanel& panel;
+        bool dragStarted = false;
+        
+        class ChildMouseListener : public juce::MouseListener
+        {
+        public:
+            ChildMouseListener(DraggableMatchesListBox& lb) : listBox(lb) {}
+            void mouseDrag(const juce::MouseEvent& e) override;
+            void mouseUp(const juce::MouseEvent& e) override;
+        private:
+            DraggableMatchesListBox& listBox;
+        };
+        
+        ChildMouseListener childListener{*this};
+    };
     
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -59,12 +89,20 @@ private:
     juce::TextButton analyzeButton;
     juce::TextButton clearButton;
     
+    // File chooser (kept as member to prevent premature destruction)
+    std::unique_ptr<juce::FileChooser> fileChooser;
+    
     // Audio info display
     juce::Label fileNameLabel;
-    juce::Label tempoLabel;
+    juce::ComboBox tempoComboBox;      // For selecting detected/alternative tempos
+    juce::TextEditor customBpmEditor;  // For entering custom BPM
+    juce::TextButton useCustomBpmButton; // To apply custom BPM
     juce::Label statusLabel;
     double progressValue = 0.0;
     std::unique_ptr<juce::ProgressBar> progressBar;
+    
+    // Currently selected BPM (from combo box or custom input)
+    double selectedBpm = 0.0;
     
     // Playback controls
     juce::TextButton playBothButton;
@@ -74,14 +112,25 @@ private:
     juce::Slider volumeSlider;
     juce::Label volumeLabel;
     
-    // Match results list
+    // Sub-tabs within Match panel (Matches vs All Grooves)
+    juce::TextButton matchesTabButton;
+    juce::TextButton allGroovesTabButton;
+    int currentSubTab = 0;  // 0 = Matches, 1 = All Grooves
+    
+    // Match results list (shown when currentSubTab == 0)
     juce::Label matchesLabel;
-    juce::ListBox matchesListBox;
+    DraggableMatchesListBox matchesListBox;
     juce::TextButton addToComposerButton;
+    
+    // Drag state for matches
+    bool isMatchDragging = false;
     
     // Bar count selector (same as GrooveBrowser)
     juce::Label barCountLabel;
     juce::ComboBox barCountComboBox;
+    
+    // Full groove browser (shown when currentSubTab == 1)
+    GrooveBrowser allGroovesBrowser;
     
     // Composer for building the drum part
     GrooveComposer grooveComposer;
@@ -122,6 +171,12 @@ private:
     void onAnalysisComplete();
     void addSelectedMatchToComposer();
     int getSelectedBarCount() const;
+    double getSelectedBPM() const;
+    void updateTempoSelection();
+    void applyCustomBpm();
+    void showSubTab(int index);
+    void startMatchExternalDrag();
+    void startGrooveBrowserDrag(int categoryIndex, int grooveIndex);
     
     // Playback methods
     void playBoth();
@@ -139,4 +194,5 @@ private:
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BandmatePanel)
 };
+
 

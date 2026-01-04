@@ -15,7 +15,7 @@ GroovesPanel::GroovesPanel()
     addAndMakeVisible(grooveComposer);
     
     // Preview button
-    previewButton.setButtonText("▶ Preview");
+    previewButton.setButtonText("Preview");
     previewButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A5A2A));
     previewButton.setColour(juce::TextButton::textColourOffId, textColour);
     previewButton.onClick = [this]() {
@@ -27,7 +27,7 @@ GroovesPanel::GroovesPanel()
     addAndMakeVisible(previewButton);
     
     // Stop button
-    stopButton.setButtonText("■ Stop");
+    stopButton.setButtonText("Stop");
     stopButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF5A2A2A));
     stopButton.setColour(juce::TextButton::textColourOffId, textColour);
     stopButton.onClick = [this]() { stopPreview(); };
@@ -52,10 +52,14 @@ GroovesPanel::GroovesPanel()
     addAndMakeVisible(bpmLabel);
     
     setupCallbacks();
+    
+    // Start timer to update BPM display from DAW
+    startTimerHz(10);  // Update 10 times per second
 }
 
 GroovesPanel::~GroovesPanel()
 {
+    stopTimer();
 }
 
 void GroovesPanel::paint(juce::Graphics& g)
@@ -142,10 +146,25 @@ void GroovesPanel::setupCallbacks()
         }
     };
     
+    // When a groove drag is initiated, handle it through GroovesPanel's DragAndDropContainer
+    grooveBrowser.onGrooveDragStarted = [this](int categoryIndex, int grooveIndex) {
+        startGrooveDrag(categoryIndex, grooveIndex);
+    };
+    
     // Composer play button
     grooveComposer.onPlayClicked = [this]() {
         if (grooveManager != nullptr)
         {
+            // Sync to DAW tempo if available
+            if (audioProcessor != nullptr)
+            {
+                double dawBpm = audioProcessor->getCurrentBPM();
+                if (dawBpm > 0)
+                {
+                    grooveManager->setPreviewBPM(dawBpm);
+                }
+            }
+            
             grooveManager->startComposerPlayback();
             grooveComposer.setPlaying(true);
         }
@@ -174,6 +193,16 @@ void GroovesPanel::previewGroove(int categoryIndex, int grooveIndex)
 {
     if (grooveManager != nullptr)
     {
+        // Sync to DAW tempo if available
+        if (audioProcessor != nullptr)
+        {
+            double dawBpm = audioProcessor->getCurrentBPM();
+            if (dawBpm > 0)
+            {
+                grooveManager->setPreviewBPM(dawBpm);
+            }
+        }
+        
         grooveManager->startPlayback(categoryIndex, grooveIndex);
     }
 }
@@ -195,4 +224,60 @@ void GroovesPanel::updatePlayingState()
         grooveComposer.setPlaying(grooveManager->isComposerPlaying());
     }
 }
+
+void GroovesPanel::timerCallback()
+{
+    // Update BPM display from DAW
+    if (audioProcessor != nullptr)
+    {
+        double bpm = audioProcessor->getCurrentBPM();
+        if (bpm > 0)
+        {
+            bpmLabel.setText("BPM: " + juce::String(bpm, 1), juce::dontSendNotification);
+        }
+        else
+        {
+            bpmLabel.setText("BPM: ---", juce::dontSendNotification);
+        }
+    }
+}
+
+void GroovesPanel::startGrooveDrag(int categoryIndex, int grooveIndex)
+{
+    if (isDragging)
+        return;
+    
+    if (grooveManager == nullptr || categoryIndex < 0 || grooveIndex < 0)
+    {
+        DBG("GroovesPanel: Cannot start groove drag - invalid indices");
+        return;
+    }
+    
+    // Export the groove to a temp file
+    juce::File midiFile = grooveManager->exportGrooveToTempFile(categoryIndex, grooveIndex);
+    
+    DBG("GroovesPanel: Starting groove drag with file: " + midiFile.getFullPathName());
+    
+    if (midiFile.existsAsFile())
+    {
+        isDragging = true;
+        
+        // Copy file path to clipboard as fallback
+        juce::SystemClipboard::copyTextToClipboard(midiFile.getFullPathName());
+        DBG("GroovesPanel: Copied to clipboard: " + midiFile.getFullPathName());
+        
+        juce::StringArray files;
+        files.add(midiFile.getFullPathName());
+        
+        performExternalDragDropOfFiles(files, true,
+            nullptr, [this]() {
+                isDragging = false;
+            });
+    }
+    else
+    {
+        DBG("GroovesPanel: Failed to export groove for drag");
+    }
+}
+
 

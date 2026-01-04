@@ -51,6 +51,33 @@ GrooveComposer::GrooveComposer()
             onClearClicked();
     };
     addAndMakeVisible(clearButton);
+    
+    // Export button - exports MIDI and opens folder (for Bitwig compatibility)
+    exportButton.setButtonText("Export MIDI");
+    exportButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A6A3A));
+    exportButton.setColour(juce::TextButton::textColourOffId, textColour);
+    exportButton.onClick = [this]() {
+        if (grooveManager == nullptr)
+            return;
+        
+        const auto& items = grooveManager->getComposerItems();
+        if (items.empty())
+        {
+            DBG("GrooveComposer: No items to export");
+            return;
+        }
+        
+        // Export the composition
+        juce::File exportedFile = grooveManager->exportCompositionToTempFile();
+        
+        if (exportedFile.existsAsFile())
+        {
+            // Open the containing folder and select the file
+            exportedFile.revealToUser();
+            DBG("GrooveComposer: Exported and revealed: " + exportedFile.getFullPathName());
+        }
+    };
+    addAndMakeVisible(exportButton);
 }
 
 GrooveComposer::~GrooveComposer()
@@ -147,7 +174,11 @@ void GrooveComposer::resized()
     
     // Title at top left
     auto topRow = bounds.removeFromTop(25);
-    titleLabel.setBounds(topRow.removeFromLeft(100));
+    titleLabel.setBounds(topRow.removeFromLeft(85));
+    
+    // Export MIDI button
+    topRow.removeFromLeft(5);
+    exportButton.setBounds(topRow.removeFromLeft(80));
     
     // Play button on the left
     auto leftArea = bounds.removeFromLeft(35);
@@ -265,22 +296,69 @@ void GrooveComposer::mouseDown(const juce::MouseEvent& e)
 
 void GrooveComposer::mouseDrag(const juce::MouseEvent& e)
 {
-    if (selectedItemIndex >= 0 && grooveManager != nullptr)
+    // Allow dragging from timeline items
+    if (grooveManager != nullptr && !isDraggingExternal)
     {
-        // Start drag for external drop
-        const auto& items = grooveManager->getComposerItems();
-        if (selectedItemIndex < static_cast<int>(items.size()))
-        {
-            // Export and start dragging
-            juce::File midiFile = grooveManager->exportCompositionToTempFile();
-            if (midiFile.existsAsFile())
-            {
-                performExternalDragDropOfFiles({midiFile.getFullPathName()}, false, this);
-            }
-        }
+        if (e.getDistanceFromDragStart() < 8)
+            return;
+        
+        startExternalDrag();
+    }
+}
+
+void GrooveComposer::mouseUp(const juce::MouseEvent& e)
+{
+    juce::ignoreUnused(e);
+    // Reset drag state on mouse up (backup in case callback doesn't fire)
+    juce::Timer::callAfterDelay(500, [this]() {
+        isDraggingExternal = false;
+    });
+}
+
+void GrooveComposer::buttonClicked(juce::Button* button)
+{
+    juce::ignoreUnused(button);
+}
+
+void GrooveComposer::startExternalDrag()
+{
+    if (grooveManager == nullptr || isDraggingExternal)
+        return;
+    
+    const auto& items = grooveManager->getComposerItems();
+    if (items.empty())
+    {
+        DBG("GrooveComposer: No items in composer to drag");
+        return;
     }
     
-    juce::ignoreUnused(e);
+    // Export the composition
+    lastExportedFile = grooveManager->exportCompositionToTempFile();
+    
+    if (!lastExportedFile.existsAsFile())
+    {
+        DBG("GrooveComposer: Failed to export composition");
+        return;
+    }
+    
+    isDraggingExternal = true;
+    
+    DBG("GrooveComposer: Starting external drag with file: " + lastExportedFile.getFullPathName());
+    
+    juce::StringArray files;
+    files.add(lastExportedFile.getFullPathName());
+    
+    // Use callback to know when drag is complete
+    bool success = performExternalDragDropOfFiles(files, true, nullptr, [this]() {
+        isDraggingExternal = false;
+        DBG("GrooveComposer: External drag completed");
+    });
+    
+    if (!success)
+    {
+        isDraggingExternal = false;
+        DBG("GrooveComposer: Failed to start external drag");
+    }
 }
 
 // DragAndDropTarget implementation
@@ -333,4 +411,5 @@ void GrooveComposer::itemDragExit(const SourceDetails& details)
     dragOver = false;
     repaint();
 }
+
 
