@@ -26,7 +26,7 @@ A powerful, open-source drum machine VST3 plugin built with the JUCE framework. 
   - [Cross-Compiling for Windows from Linux](#cross-compiling-for-windows-from-linux)
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
-- [Tested DAWs/Known Issues](#tested-daws/known_issues)
+- [Tested DAWs/Known Issues](#tested-dawsknown-issues)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
