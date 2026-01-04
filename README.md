@@ -36,7 +36,7 @@ An open-source drum machine VST3 plugin built with the JUCE framework. JDrummer 
 
 ### 🥁 Drum Pads
 - **16-pad drum grid** with velocity-sensitive playback
-- **Multiple Soundfont kits** - Ships with 29 drum kits including:
+- **Multiple Soundfont kits** - Ships with 28 drum kits including:
   - Standard acoustic kits (Standard, Room Drums, Power Drums, Jazz Drums)
   - Electronic kits (808, Electronic Drums, Dance Drums, House Kit)
   - Specialty kits (Orchestral Percussion, Brush Drums, NIN Drumkit)
