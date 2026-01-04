@@ -83,14 +83,14 @@ An intelligent feature inspired by professional drum software that helps you fin
 
 ### Screenshots
 Drum Kits Tab
-![Screenshot](https://i.postimg.cc/qMnR82Ds/jdrummer-kits.png)
+![Screenshot](https://i.postimg.cc/BQx7FDgQ/jdrummer-kits.png)
 
 Grooves Tab
-![Screenshot](https://i.postimg.cc/ZqJCY0L1/jdrummergrooves.png)
+![Screenshot](https://i.postimg.cc/9MRJQqM6/jdrummergrooves.png)
 
 Groove Matcher Tab
 
-![Screenshot](https://i.postimg.cc/t4BYTpmv/jdrummermmatch.png)
+![Screenshot](https://i.postimg.cc/fTj5ysw6/jdrummermmatch.png)
 
 
 
@@ -133,7 +133,7 @@ After installing, you may need to restart your DAW or run:
 killall -9 AudioComponentRegistrar
 ```
 
-### Adding Custom SoundFonts
+### Adding Custom Soundfonts
 Place additional `.sf2` SoundFont files in the plugin's soundfonts directory:
 - **Linux**: `~/.vst3/jdrummer.vst3/Contents/Resources/soundfonts/`
 - **Windows**: `<VST3 Location>\jdrummer.vst3\Contents\Resources\soundfonts\`
