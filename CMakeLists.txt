@@ -102,7 +102,7 @@ target_link_libraries(jdrummer
 
 if (NOT LINUX_INSTALL_SYSTEM)
     # Copy soundfonts to build directory for standalone
-    add_custom_command(TARGET jdrummer POST_BUILDG
+    add_custom_command(TARGET jdrummer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/soundfonts
         $<TARGET_FILE_DIR:jdrummer>/soundfonts
