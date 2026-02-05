@@ -1,7 +1,7 @@
 /*
     GroovesPanel.cpp
     ================
-    
+
     Implementation of the main grooves panel.
 */
 
@@ -13,7 +13,7 @@ GroovesPanel::GroovesPanel()
     // Add child components
     addAndMakeVisible(grooveBrowser);
     addAndMakeVisible(grooveComposer);
-    
+
     // Preview button
     previewButton.setButtonText("Preview");
     previewButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A5A2A));
@@ -25,14 +25,14 @@ GroovesPanel::GroovesPanel()
             previewGroove(cat, groove);
     };
     addAndMakeVisible(previewButton);
-    
+
     // Stop button
     stopButton.setButtonText("Stop");
     stopButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF5A2A2A));
     stopButton.setColour(juce::TextButton::textColourOffId, textColour);
     stopButton.onClick = [this]() { stopPreview(); };
     addAndMakeVisible(stopButton);
-    
+
     // Loop toggle
     loopToggle.setButtonText("Loop");
     loopToggle.setColour(juce::ToggleButton::textColourId, textColour);
@@ -43,16 +43,16 @@ GroovesPanel::GroovesPanel()
             grooveManager->setLooping(loopToggle.getToggleState());
     };
     addAndMakeVisible(loopToggle);
-    
+
     // BPM label (will be updated from DAW)
     bpmLabel.setText("BPM: ---", juce::dontSendNotification);
-    bpmLabel.setFont(juce::Font(12.0f));
+    bpmLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     bpmLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
     bpmLabel.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(bpmLabel);
-    
+
     setupCallbacks();
-    
+
     // Start timer to update BPM display from DAW
     startTimerHz(10);  // Update 10 times per second
 }
@@ -72,7 +72,7 @@ void GroovesPanel::paint(juce::Graphics& g)
     );
     g.setGradientFill(gradient);
     g.fillAll();
-    
+
     // Scanline effect
     g.setColour(juce::Colour(0x08FFFFFF));
     for (int y = 0; y < getHeight(); y += 4)
@@ -84,7 +84,7 @@ void GroovesPanel::paint(juce::Graphics& g)
 void GroovesPanel::resized()
 {
     auto bounds = getLocalBounds().reduced(10);
-    
+
     // Top control bar
     auto topBar = bounds.removeFromTop(35);
     previewButton.setBounds(topBar.removeFromLeft(100));
@@ -92,17 +92,17 @@ void GroovesPanel::resized()
     stopButton.setBounds(topBar.removeFromLeft(80));
     topBar.removeFromLeft(20);
     loopToggle.setBounds(topBar.removeFromLeft(70));
-    
+
     bpmLabel.setBounds(topBar.removeFromRight(100));
-    
+
     bounds.removeFromTop(10);
-    
+
     // Composer at the bottom
     auto composerBounds = bounds.removeFromBottom(80);
     grooveComposer.setBounds(composerBounds);
-    
+
     bounds.removeFromBottom(10);
-    
+
     // Browser takes the rest
     grooveBrowser.setBounds(bounds);
 }
@@ -117,7 +117,7 @@ void GroovesPanel::setGrooveManager(GrooveManager* manager)
     grooveManager = manager;
     grooveBrowser.setGrooveManager(manager);
     grooveComposer.setGrooveManager(manager);
-    
+
     if (manager != nullptr)
     {
         manager->setLooping(loopToggle.getToggleState());
@@ -136,7 +136,7 @@ void GroovesPanel::setupCallbacks()
     grooveBrowser.onGrooveDoubleClicked = [this](int categoryIndex, int grooveIndex) {
         previewGroove(categoryIndex, grooveIndex);
     };
-    
+
     // When "Add to Composer" is clicked
     grooveBrowser.onGrooveAddToComposer = [this](int categoryIndex, int grooveIndex, int barCount) {
         if (grooveManager != nullptr)
@@ -145,12 +145,12 @@ void GroovesPanel::setupCallbacks()
             grooveComposer.refresh();
         }
     };
-    
+
     // When a groove drag is initiated, handle it through GroovesPanel's DragAndDropContainer
     grooveBrowser.onGrooveDragStarted = [this](int categoryIndex, int grooveIndex) {
         startGrooveDrag(categoryIndex, grooveIndex);
     };
-    
+
     // Composer play button
     grooveComposer.onPlayClicked = [this]() {
         if (grooveManager != nullptr)
@@ -164,12 +164,12 @@ void GroovesPanel::setupCallbacks()
                     grooveManager->setPreviewBPM(dawBpm);
                 }
             }
-            
+
             grooveManager->startComposerPlayback();
             grooveComposer.setPlaying(true);
         }
     };
-    
+
     // Composer stop button
     grooveComposer.onStopClicked = [this]() {
         if (grooveManager != nullptr)
@@ -178,7 +178,7 @@ void GroovesPanel::setupCallbacks()
             grooveComposer.setPlaying(false);
         }
     };
-    
+
     // Composer clear button
     grooveComposer.onClearClicked = [this]() {
         if (grooveManager != nullptr)
@@ -202,7 +202,7 @@ void GroovesPanel::previewGroove(int categoryIndex, int grooveIndex)
                 grooveManager->setPreviewBPM(dawBpm);
             }
         }
-        
+
         grooveManager->startPlayback(categoryIndex, grooveIndex);
     }
 }
@@ -246,29 +246,29 @@ void GroovesPanel::startGrooveDrag(int categoryIndex, int grooveIndex)
 {
     if (isDragging)
         return;
-    
+
     if (grooveManager == nullptr || categoryIndex < 0 || grooveIndex < 0)
     {
         DBG("GroovesPanel: Cannot start groove drag - invalid indices");
         return;
     }
-    
+
     // Export the groove to a temp file
     juce::File midiFile = grooveManager->exportGrooveToTempFile(categoryIndex, grooveIndex);
-    
+
     DBG("GroovesPanel: Starting groove drag with file: " + midiFile.getFullPathName());
-    
+
     if (midiFile.existsAsFile())
     {
         isDragging = true;
-        
+
         // Copy file path to clipboard as fallback
         juce::SystemClipboard::copyTextToClipboard(midiFile.getFullPathName());
         DBG("GroovesPanel: Copied to clipboard: " + midiFile.getFullPathName());
-        
+
         juce::StringArray files;
         files.add(midiFile.getFullPathName());
-        
+
         performExternalDragDropOfFiles(files, true,
             nullptr, [this]() {
                 isDragging = false;
@@ -279,5 +279,3 @@ void GroovesPanel::startGrooveDrag(int categoryIndex, int grooveIndex)
         DBG("GroovesPanel: Failed to export groove for drag");
     }
 }
-
-

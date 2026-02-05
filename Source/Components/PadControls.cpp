@@ -1,7 +1,7 @@
 /*
     PadControls.cpp
     ===============
-    
+
     Implementation of per-pad volume, pan, and mute controls.
 */
 
@@ -11,18 +11,18 @@ PadControls::PadControls()
 {
     // Title label showing selected pad name
     titleLabel.setText("Kick", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(16.0f, juce::Font::bold));
+    titleLabel.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold)));
     titleLabel.setColour(juce::Label::textColourId, accentColour);
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);
-    
+
     // Volume label
     volumeLabel.setText("Volume", juce::dontSendNotification);
-    volumeLabel.setFont(juce::Font(12.0f));
+    volumeLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     volumeLabel.setColour(juce::Label::textColourId, textColour);
     volumeLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(volumeLabel);
-    
+
     // Volume slider
     volumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     volumeSlider.setRange(0.0, 1.0, 0.01);
@@ -35,14 +35,14 @@ PadControls::PadControls()
             onVolumeChanged(selectedNote, static_cast<float>(volumeSlider.getValue()));
     };
     addAndMakeVisible(volumeSlider);
-    
+
     // Pan label
     panLabel.setText("Pan", juce::dontSendNotification);
-    panLabel.setFont(juce::Font(12.0f));
+    panLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     panLabel.setColour(juce::Label::textColourId, textColour);
     panLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(panLabel);
-    
+
     // Pan slider
     panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     panSlider.setRange(-1.0, 1.0, 0.01);
@@ -55,7 +55,7 @@ PadControls::PadControls()
             onPanChanged(selectedNote, static_cast<float>(panSlider.getValue()));
     };
     addAndMakeVisible(panSlider);
-    
+
     // Mute button
     muteButton.setButtonText("MUTE");
     muteButton.setClickingTogglesState(true);
@@ -75,7 +75,7 @@ PadControls::~PadControls()
 void PadControls::paint(juce::Graphics& g)
 {
     g.fillAll(backgroundColour);
-    
+
     // Border
     g.setColour(juce::Colour(0xFF333344));
     g.drawRect(getLocalBounds(), 1);
@@ -84,25 +84,25 @@ void PadControls::paint(juce::Graphics& g)
 void PadControls::resized()
 {
     auto bounds = getLocalBounds().reduced(10);
-    
+
     // Title at top
     titleLabel.setBounds(bounds.removeFromTop(25));
     bounds.removeFromTop(5);
-    
+
     // Volume row
     auto volumeRow = bounds.removeFromTop(25);
     volumeLabel.setBounds(volumeRow.removeFromLeft(50));
     volumeSlider.setBounds(volumeRow);
-    
+
     bounds.removeFromTop(5);
-    
+
     // Pan row
     auto panRow = bounds.removeFromTop(25);
     panLabel.setBounds(panRow.removeFromLeft(50));
     panSlider.setBounds(panRow);
-    
+
     bounds.removeFromTop(10);
-    
+
     // Mute button - large and prominent
     auto muteRow = bounds.removeFromTop(50);
     muteButton.setBounds(muteRow.withSizeKeepingCentre(200, 40));
