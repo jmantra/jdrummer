@@ -26,9 +26,19 @@
 #include <map>
 #include <array>
 #include <functional>
+#include <vector>
 
 // Forward declaration - tsf is defined in tsf.h
 struct tsf;
+
+// Information about a preset (drum kit variation) within a SoundFont
+struct PresetInfo
+{
+    int index;           // Internal TSF index
+    int bank;            // MIDI bank number (128 for drums)
+    int presetNumber;    // MIDI program number
+    juce::String name;   // Preset name from the SoundFont
+};
 
 class SoundFontManager
 {
@@ -78,6 +88,41 @@ public:
     void setNoteMute(int note, bool muted);
     bool getNoteMute(int note) const;
     
+    // Per-note velocity override (-1.0 = use input velocity, 0.0-1.0 = fixed velocity)
+    // This allows selecting specific velocity layers in multi-layered SoundFonts
+    void setNoteVelocityOverride(int note, float velocity);
+    float getNoteVelocityOverride(int note) const;
+    bool hasVelocityOverride(int note) const;
+    void clearVelocityOverride(int note);
+    
+    // Preserve sample pan mode - when true, center pan (0.0) uses SoundFont's built-in pan
+    void setPreserveSamplePan(bool preserve);
+    bool getPreserveSamplePan() const { return preserveSamplePan; }
+    
+    // Global volume (0.0 to 1.0) - helps prevent clipping with multi-layered SoundFonts
+    void setGlobalVolume(float volume);
+    float getGlobalVolume() const { return globalVolume; }
+    
+    // ===== PRESET/LAYER SELECTION =====
+    
+    // Get list of available presets (drum kit variations) in the loaded SoundFont
+    std::vector<PresetInfo> getAvailablePresets() const;
+    
+    // Get the number of available presets
+    int getPresetCount() const;
+    
+    // Get the current preset index
+    int getCurrentPresetIndex() const { return currentPresetIndex; }
+    
+    // Get the current preset name
+    juce::String getCurrentPresetName() const;
+    
+    // Set the active preset by index (returns true on success)
+    bool setPreset(int presetIndex);
+    
+    // Set the active preset by name (returns true on success)
+    bool setPresetByName(const juce::String& name);
+    
     // ===== MULTI-OUT SUPPORT =====
     
     // Set the function that maps MIDI notes to output groups
@@ -119,6 +164,20 @@ private:
     std::map<int, float> noteVolumes;
     std::map<int, float> notePans;
     std::map<int, bool> noteMutes;
+    std::map<int, float> noteVelocityOverrides;  // -1.0 = no override, 0.0-1.0 = fixed velocity
+    
+    // When true, center pan (0.0) respects SoundFont's built-in sample panning
+    // This helps with SoundFonts that have pre-panned stereo samples
+    bool preserveSamplePan = true;
+    
+    // Global volume (0.0-1.0) to prevent clipping with multi-layered SFs
+    float globalVolume = 0.8f;
+    
+    // Available presets in the current SoundFont
+    std::vector<PresetInfo> availablePresets;
+    
+    // Currently selected preset index
+    int currentPresetIndex = 0;
     
     // Thread safety lock (mutable to allow use in const methods)
     mutable juce::CriticalSection lock;

@@ -98,7 +98,7 @@ void GroovesPanel::resized()
     bounds.removeFromTop(10);
     
     // Composer at the bottom
-    auto composerBounds = bounds.removeFromBottom(80);
+    auto composerBounds = bounds.removeFromBottom(100);
     grooveComposer.setBounds(composerBounds);
     
     bounds.removeFromBottom(10);

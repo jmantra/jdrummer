@@ -25,7 +25,7 @@ GrooveComposer::GrooveComposer()
     addAndMakeVisible(hintLabel);
     
     // Play button
-    playButton.setButtonText("▶");
+    playButton.setButtonText("Play");
     playButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A5A2A));
     playButton.setColour(juce::TextButton::textColourOffId, textColour);
     playButton.onClick = [this]() {
@@ -82,6 +82,13 @@ GrooveComposer::GrooveComposer()
 
 GrooveComposer::~GrooveComposer()
 {
+    stopTimer();
+}
+
+void GrooveComposer::timerCallback()
+{
+    // Repaint to update playhead position and note highlighting
+    repaint();
 }
 
 void GrooveComposer::paint(juce::Graphics& g)
@@ -104,7 +111,7 @@ void GrooveComposer::paint(juce::Graphics& g)
     // Draw timeline area
     auto bounds = getLocalBounds().reduced(10);
     bounds.removeFromTop(25);  // Title area
-    bounds.removeFromLeft(45);  // Play button area
+    bounds.removeFromLeft(50);  // Play button area
     bounds.removeFromRight(60);  // Clear button area
     
     // Timeline background
@@ -116,14 +123,14 @@ void GrooveComposer::paint(juce::Graphics& g)
     {
         const auto& items = grooveManager->getComposerItems();
         
-        if (items.empty())
+        // Always hide hint label
+        hintLabel.setVisible(false);
+        
+        if (!items.empty())
         {
-            // Show hint when empty
-            hintLabel.setVisible(true);
-        }
-        else
-        {
-            hintLabel.setVisible(false);
+            // Get current playback position for highlighting
+            double playbackPos = grooveManager->getComposerPlaybackPosition();
+            bool isPlayingBack = playbackPos >= 0;
             
             // Draw each item
             for (size_t i = 0; i < itemRects.size(); ++i)
@@ -149,20 +156,128 @@ void GrooveComposer::paint(juce::Graphics& g)
                 g.setColour(itemBg);
                 g.fillRoundedRectangle(rect.bounds.toFloat(), 3.0f);
                 
+                // Draw MIDI notes as mini piano-roll visualization
+                if (groove->isLoaded && !groove->events.empty() && groove->lengthInBeats > 0)
+                {
+                    // Tighter drum range for better vertical spread (most drums are 35-57)
+                    const int minNote = 35;   // Kick drum
+                    const int maxNote = 57;   // Crash cymbal 2
+                    const float noteRange = static_cast<float>(maxNote - minNote);
+                    
+                    // Calculate drawable area inside the item (with small padding)
+                    auto noteArea = rect.bounds.reduced(2, 14);  // More top padding for label
+                    
+                    // Calculate position within this groove for highlighting
+                    double posInGroove = -1.0;
+                    if (isPlayingBack)
+                    {
+                        posInGroove = playbackPos - item.startBeat;
+                        // Handle looping - wrap position within selected bar range
+                        if (posInGroove >= item.lengthInBeats)
+                            posInGroove = -1.0;  // Past this item
+                    }
+                    
+                    for (const auto& event : groove->events)
+                    {
+                        if (event.message.isNoteOn())
+                        {
+                            int note = event.message.getNoteNumber();
+                            float velocity = event.message.getFloatVelocity();
+                            
+                            // Clamp notes to display range (don't skip, just clamp position)
+                            int displayNote = juce::jlimit(minNote, maxNote, note);
+                            
+                            // Skip notes that are past the selected bar length
+                            if (event.timeInBeats >= item.lengthInBeats)
+                                continue;
+                            
+                            // X: map timeInBeats to item width (use item.lengthInBeats for selected bar range)
+                            float xRatio = static_cast<float>(event.timeInBeats / item.lengthInBeats);
+                            float x = noteArea.getX() + xRatio * noteArea.getWidth();
+                            
+                            // Y: map note number to item height (higher notes at top)
+                            float yRatio = 1.0f - (static_cast<float>(displayNote - minNote) / noteRange);
+                            float y = noteArea.getY() + yRatio * (noteArea.getHeight() - 4);
+                            
+                            // Note size - width based on velocity, fixed height
+                            float noteWidth = 2.0f + velocity * 2.0f;
+                            float noteHeight = 2.0f;
+                            
+                            // Check if this note is currently being played (within 0.15 beats of playhead)
+                            bool noteIsPlaying = false;
+                            if (posInGroove >= 0)
+                            {
+                                double timeSinceNote = posInGroove - event.timeInBeats;
+                                if (timeSinceNote >= 0 && timeSinceNote < 0.2)
+                                    noteIsPlaying = true;
+                            }
+                            
+                            // Color based on note type with velocity-based brightness
+                            juce::Colour noteColour;
+                            if (note == 36 || note == 35)  // Kick drums
+                                noteColour = juce::Colour(0xFFFF6B6B);  // Red
+                            else if (note == 38 || note == 40)  // Snare drums
+                                noteColour = juce::Colour(0xFF4ECDC4);  // Teal
+                            else if (note >= 42 && note <= 46)  // Hi-hats
+                                noteColour = juce::Colour(0xFFFFE66D);  // Yellow
+                            else if (note >= 49 && note <= 57)  // Cymbals
+                                noteColour = juce::Colour(0xFFFF9F43);  // Orange
+                            else if (note >= 47 && note <= 48)  // Toms
+                                noteColour = juce::Colour(0xFFA29BFE);  // Purple
+                            else
+                                noteColour = juce::Colour(0xFFDFE6E9);  // Light gray
+                            
+                            // Apply velocity-based alpha
+                            noteColour = noteColour.withAlpha(0.6f + velocity * 0.4f);
+                            
+                            // Highlight notes being played - make them brighter and larger
+                            if (noteIsPlaying)
+                            {
+                                noteColour = juce::Colours::white;
+                                noteWidth *= 2.0f;
+                                noteHeight = 4.0f;
+                                y -= 1.0f;  // Center the larger note
+                            }
+                            
+                            g.setColour(noteColour);
+                            g.fillRect(x, y, noteWidth, noteHeight);
+                        }
+                    }
+                    
+                    // Draw playhead line if playing within this groove
+                    if (posInGroove >= 0 && posInGroove < item.lengthInBeats)
+                    {
+                        float xRatio = static_cast<float>(posInGroove / item.lengthInBeats);
+                        float playheadX = noteArea.getX() + xRatio * noteArea.getWidth();
+                        
+                        g.setColour(juce::Colours::white.withAlpha(0.9f));
+                        g.drawVerticalLine(static_cast<int>(playheadX), 
+                                          static_cast<float>(noteArea.getY()), 
+                                          static_cast<float>(noteArea.getBottom()));
+                    }
+                }
+                
                 // Item border
                 g.setColour(itemBg.brighter(0.3f));
                 g.drawRoundedRectangle(rect.bounds.toFloat(), 3.0f, 1.0f);
                 
-                // Item text
-                g.setColour(textColour);
-                g.setFont(juce::Font(10.0f));
-                
+                // Item text (draw at bottom with semi-transparent background for readability)
                 juce::String displayName = groove->name;
                 if (rect.bounds.getWidth() < 60)
                     displayName = displayName.substring(0, 6) + "...";
                 
-                g.drawText(displayName, rect.bounds.reduced(4, 2), 
-                          juce::Justification::centred, true);
+                auto textBounds = rect.bounds.reduced(2);
+                auto textHeight = 12;
+                auto textArea = textBounds.removeFromBottom(textHeight);
+                
+                // Semi-transparent background for text
+                g.setColour(juce::Colour(0x99000000));
+                g.fillRect(textArea.toFloat());
+                
+                g.setColour(textColour);
+                g.setFont(juce::Font(9.0f));
+                g.drawText(displayName, textArea.reduced(2, 0), 
+                          juce::Justification::centredLeft, true);
             }
         }
     }
@@ -181,8 +296,8 @@ void GrooveComposer::resized()
     exportButton.setBounds(topRow.removeFromLeft(80));
     
     // Play button on the left
-    auto leftArea = bounds.removeFromLeft(35);
-    playButton.setBounds(leftArea.withSizeKeepingCentre(30, 30));
+    auto leftArea = bounds.removeFromLeft(45);
+    playButton.setBounds(leftArea.withSizeKeepingCentre(40, 25));
     bounds.removeFromLeft(5);
     
     // Clear button on the right
@@ -211,9 +326,15 @@ void GrooveComposer::refresh()
 void GrooveComposer::setPlaying(bool playing)
 {
     isPlaying = playing;
-    playButton.setButtonText(playing ? "■" : "▶");
+    playButton.setButtonText(playing ? "Stop" : "Play");
     playButton.setColour(juce::TextButton::buttonColourId, 
                          playing ? juce::Colour(0xFF5A5A2A) : juce::Colour(0xFF2A5A2A));
+    
+    // Start/stop repaint timer for playhead and note highlighting
+    if (playing)
+        startTimerHz(30);  // 30fps update for smooth playhead
+    else
+        stopTimer();
 }
 
 void GrooveComposer::updateItemRects()
@@ -230,7 +351,7 @@ void GrooveComposer::updateItemRects()
     // Calculate the timeline bounds
     auto bounds = getLocalBounds().reduced(10);
     bounds.removeFromTop(25);
-    bounds.removeFromLeft(45);
+    bounds.removeFromLeft(50);
     bounds.removeFromRight(60);
     bounds = bounds.reduced(4);
     
@@ -239,7 +360,11 @@ void GrooveComposer::updateItemRects()
     if (totalBeats <= 0)
         return;
     
-    double pixelsPerBeat = static_cast<double>(bounds.getWidth()) / totalBeats;
+    // Use a fixed reference width: 8 bars (32 beats) = full width
+    // If content exceeds this, expand to fit
+    const double referenceBeats = 32.0;  // 8 bars at 4/4 time
+    double viewportBeats = juce::jmax(referenceBeats, totalBeats);
+    double pixelsPerBeat = static_cast<double>(bounds.getWidth()) / viewportBeats;
     
     for (size_t i = 0; i < items.size(); ++i)
     {

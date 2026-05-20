@@ -102,6 +102,23 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
     // Populate the kit dropdown with available soundfonts
     populateKitComboBox();
     
+    // Preset label
+    presetLabel.setText("Preset:", juce::dontSendNotification);
+    presetLabel.setFont(juce::Font(12.0f));
+    presetLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF999999));
+    addAndMakeVisible(presetLabel);
+    
+    // Preset ComboBox
+    presetComboBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xFF252525));
+    presetComboBox.setColour(juce::ComboBox::textColourId, juce::Colour(0xFFCCCCCC));
+    presetComboBox.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xFF444444));
+    presetComboBox.setColour(juce::ComboBox::arrowColourId, juce::Colour(0xFF00BFFF));
+    presetComboBox.onChange = [this]() { onPresetComboBoxChanged(); };
+    addAndMakeVisible(presetComboBox);
+    
+    // Populate preset dropdown for the initial kit
+    populatePresetComboBox();
+    
     /*
         TAB BUTTONS
         -----------
@@ -228,6 +245,52 @@ void JdrummerAudioProcessorEditor::onKitComboBoxChanged()
     {
         // Tell the processor to load the new kit
         audioProcessor.getSoundFontManager().loadKit(kitName);
+        
+        // Update preset dropdown for the new kit
+        populatePresetComboBox();
+    }
+}
+
+/*
+    POPULATE PRESET COMBOBOX
+    ------------------------
+    Fills the preset dropdown with available presets for the current kit.
+*/
+void JdrummerAudioProcessorEditor::populatePresetComboBox()
+{
+    presetComboBox.clear(juce::dontSendNotification);
+    
+    auto presets = audioProcessor.getSoundFontManager().getAvailablePresets();
+    int currentPreset = audioProcessor.getSoundFontManager().getCurrentPresetIndex();
+    
+    int id = 1;
+    for (const auto& preset : presets)
+    {
+        presetComboBox.addItem(preset.name, id++);
+    }
+    
+    // Only show preset selector if there are multiple presets
+    bool hasMultiplePresets = presets.size() > 1;
+    presetLabel.setVisible(hasMultiplePresets);
+    presetComboBox.setVisible(hasMultiplePresets);
+    
+    if (presets.size() > 0)
+    {
+        presetComboBox.setSelectedItemIndex(currentPreset, juce::dontSendNotification);
+    }
+}
+
+/*
+    PRESET COMBOBOX CHANGED
+    -----------------------
+    Called when user selects a different preset.
+*/
+void JdrummerAudioProcessorEditor::onPresetComboBoxChanged()
+{
+    int presetIndex = presetComboBox.getSelectedItemIndex();
+    if (presetIndex >= 0)
+    {
+        audioProcessor.getSoundFontManager().setPreset(presetIndex);
     }
 }
 
@@ -488,10 +551,27 @@ void JdrummerAudioProcessorEditor::resized()
     headerBounds.removeFromLeft(20);  // Spacing
     
     // Kit selector on the right (only visible in Drum Kit tab, but always positioned)
-    auto kitArea = headerBounds.removeFromRight(250);
-    kitLabel.setBounds(kitArea.removeFromLeft(35));
+    // Dynamically size based on whether preset controls are visible
+    bool showPresets = presetComboBox.isVisible();
+    int kitAreaWidth = showPresets ? 450 : 260;
+    
+    auto kitArea = headerBounds.removeFromRight(kitAreaWidth);
+    kitLabel.setBounds(kitArea.removeFromLeft(30));
     kitArea.removeFromLeft(5);  // Spacing
-    kitComboBox.setBounds(kitArea);
+    
+    if (showPresets)
+    {
+        kitComboBox.setBounds(kitArea.removeFromLeft(170));
+        kitArea.removeFromLeft(10);  // Spacing
+        presetLabel.setBounds(kitArea.removeFromLeft(45));
+        kitArea.removeFromLeft(5);  // Spacing
+        presetComboBox.setBounds(kitArea);
+    }
+    else
+    {
+        // No presets visible - give all remaining space to kit combobox
+        kitComboBox.setBounds(kitArea);
+    }
     
     /*
         BOTTOM CONTROLS AREA (140px) - Only for Drum Kit tab

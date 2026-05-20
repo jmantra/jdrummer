@@ -90,6 +90,12 @@ private:
     // Called when user selects a different kit
     void onKitComboBoxChanged();
     
+    // Populate the preset dropdown with available presets for current kit
+    void populatePresetComboBox();
+    
+    // Called when user selects a different preset
+    void onPresetComboBoxChanged();
+    
     // Convert a MIDI note number to a human-readable name
     juce::String getPadNameForNote(int note);
     
@@ -121,6 +127,8 @@ private:
     juce::Label titleLabel;      // Shows "jdrummer"
     juce::Label kitLabel;        // Shows "Kit:"
     juce::ComboBox kitComboBox;  // Dropdown to select drum kit
+    juce::Label presetLabel;     // Shows "Preset:"
+    juce::ComboBox presetComboBox;  // Dropdown to select kit preset/layer
     
     // Tab buttons for switching views
     juce::TextButton drumKitTabButton;

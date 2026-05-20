@@ -17,7 +17,8 @@
 class GrooveComposer : public juce::Component,
                        public juce::DragAndDropTarget,
                        public juce::DragAndDropContainer,
-                       private juce::Button::Listener
+                       private juce::Button::Listener,
+                       private juce::Timer
 {
 public:
     GrooveComposer();
@@ -55,6 +56,9 @@ private:
     
     // Button::Listener
     void buttonClicked(juce::Button* button) override;
+    
+    // Timer callback for playback visualization
+    void timerCallback() override;
     
     // UI Components
     juce::Label titleLabel;

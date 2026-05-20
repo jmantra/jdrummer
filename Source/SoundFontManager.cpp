@@ -18,6 +18,7 @@
 #define TSF_IMPLEMENTATION  // Enable the implementation in this file only
 #include "tsf.h"            // TinySoundFont - a simple SF2 player library
 #include "SoundFontManager.h"
+#include <cmath>            // For std::abs
 
 SoundFontManager::SoundFontManager()
 {
@@ -140,6 +141,15 @@ bool SoundFontManager::loadKit(const juce::String& kitName)
                    static_cast<int>(currentSampleRate), 0.0f);
     tsf_set_max_voices(soundFont, 64);
     
+    // Reduce global volume slightly to prevent clipping with multi-layered SoundFonts
+    // Multi-layered SFs can sum multiple samples, potentially causing distortion
+    tsf_set_volume(soundFont, 0.8f);
+    
+    // Configure channel 9 for drums using Bank 128 (GM standard for drums)
+    // This ensures proper instrument selection for complex SoundFonts
+    tsf_channel_set_bank(soundFont, 9, 128);  // Bank 128 = drums
+    tsf_channel_set_presetnumber(soundFont, 9, 0, 1);  // Preset 0, with drum mode enabled
+    
     // Load and configure group soundfonts for multi-out
     for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
     {
@@ -149,12 +159,41 @@ bool SoundFontManager::loadKit(const juce::String& kitName)
             tsf_set_output(soundFontGroups[i], TSF_STEREO_INTERLEAVED,
                            static_cast<int>(currentSampleRate), 0.0f);
             tsf_set_max_voices(soundFontGroups[i], 8);  // Fewer voices per group
+            
+            // Reduce global volume slightly to prevent clipping
+            tsf_set_volume(soundFontGroups[i], 0.8f);
+            
+            // Configure channel 9 for drums using Bank 128
+            tsf_channel_set_bank(soundFontGroups[i], 9, 128);
+            tsf_channel_set_presetnumber(soundFontGroups[i], 9, 0, 1);  // Drum mode enabled
         }
     }
     
     currentKitName = kitName;
     
+    // Enumerate available presets in this SoundFont
+    availablePresets.clear();
     int presetCount = tsf_get_presetcount(soundFont);
+    
+    for (int i = 0; i < presetCount; ++i)
+    {
+        const char* name = tsf_get_presetname(soundFont, i);
+        if (name != nullptr)
+        {
+            PresetInfo info;
+            info.index = i;
+            info.name = juce::String(name);
+            info.bank = 128;  // Assume drums (bank 128)
+            info.presetNumber = i;
+            availablePresets.push_back(info);
+            
+            DBG("  Preset " + juce::String(i) + ": " + info.name);
+        }
+    }
+    
+    // Reset to first preset
+    currentPresetIndex = 0;
+    
     DBG("Loaded soundfont: " + kitName + " with " + juce::String(presetCount) + " presets");
     
     return true;
@@ -205,22 +244,41 @@ void SoundFontManager::noteOn(int note, float velocity)
     if (noteMutes.count(note) && noteMutes[note])
         return;
     
+    // Apply velocity override if set (for selecting specific velocity layers)
+    float effectiveVelocity = velocity;
+    auto velOverride = noteVelocityOverrides.find(note);
+    if (velOverride != noteVelocityOverrides.end())
+    {
+        effectiveVelocity = velOverride->second;
+    }
+    
     // Apply per-note volume
     float vol = noteVolumes.count(note) ? noteVolumes[note] : 0.5f;
-    float adjustedVelocity = velocity * vol;
+    float adjustedVelocity = effectiveVelocity * vol;
     
-    // Apply per-note pan
+    // Apply per-note pan with preserve sample pan support
     float pan = notePans.count(note) ? notePans[note] : 0.0f;
-    // TSF pan: 0.0 = left, 0.5 = center, 1.0 = right
-    // Our pan: -1.0 = left, 0.0 = center, 1.0 = right
-    // Invert because TSF has reversed pan direction
-    float tsfPan = (1.0f - pan) / 2.0f;
+    float tsfPan;
+    
+    if (preserveSamplePan && std::abs(pan) < 0.01f)
+    {
+        // When preserveSamplePan is enabled and pan is centered,
+        // use 0.5 which applies no offset to sample's built-in pan
+        tsfPan = 0.5f;
+    }
+    else
+    {
+        // When user explicitly pans, use aggressive values to fully override sample pan
+        // TSF pan offset = tsfPan - 0.5, so we use values outside 0-1 range
+        // to ensure we can overcome any pre-panned samples
+        tsfPan = 0.5f + pan;  // Range -0.5 to 1.5 for panOffset -1.0 to +1.0
+        // Note: TSF internally clamps the final result, but the offset is applied first
+    }
     
     int presetCount = tsf_get_presetcount(soundFont);
     if (presetCount > 0)
     {
-        // Use channel 9 for drums (GM standard) with channel-based note triggering
-        tsf_channel_set_presetindex(soundFont, 9, 0);  // Set preset on channel 9
+        // Use channel 9 for drums (GM standard) - bank already set in loadKit
         tsf_channel_set_pan(soundFont, 9, tsfPan);
         tsf_channel_note_on(soundFont, 9, note, adjustedVelocity);
     }
@@ -289,6 +347,142 @@ bool SoundFontManager::getNoteMute(int note) const
     return it != noteMutes.end() ? it->second : false;
 }
 
+void SoundFontManager::setNoteVelocityOverride(int note, float velocity)
+{
+    juce::ScopedLock sl(lock);
+    if (velocity < 0.0f)
+    {
+        // Negative value clears the override
+        noteVelocityOverrides.erase(note);
+    }
+    else
+    {
+        noteVelocityOverrides[note] = juce::jlimit(0.0f, 1.0f, velocity);
+    }
+}
+
+float SoundFontManager::getNoteVelocityOverride(int note) const
+{
+    auto it = noteVelocityOverrides.find(note);
+    return it != noteVelocityOverrides.end() ? it->second : -1.0f;
+}
+
+bool SoundFontManager::hasVelocityOverride(int note) const
+{
+    return noteVelocityOverrides.find(note) != noteVelocityOverrides.end();
+}
+
+void SoundFontManager::clearVelocityOverride(int note)
+{
+    juce::ScopedLock sl(lock);
+    noteVelocityOverrides.erase(note);
+}
+
+void SoundFontManager::setPreserveSamplePan(bool preserve)
+{
+    juce::ScopedLock sl(lock);
+    preserveSamplePan = preserve;
+}
+
+void SoundFontManager::setGlobalVolume(float volume)
+{
+    juce::ScopedLock sl(lock);
+    globalVolume = juce::jlimit(0.0f, 1.0f, volume);
+    
+    // Apply to main soundfont
+    if (soundFont != nullptr)
+    {
+        tsf_set_volume(soundFont, globalVolume);
+    }
+    
+    // Apply to all group soundfonts
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        if (soundFontGroups[i] != nullptr)
+        {
+            tsf_set_volume(soundFontGroups[i], globalVolume);
+        }
+    }
+}
+
+// ===== PRESET/LAYER SELECTION =====
+
+std::vector<PresetInfo> SoundFontManager::getAvailablePresets() const
+{
+    juce::ScopedLock sl(lock);
+    return availablePresets;
+}
+
+int SoundFontManager::getPresetCount() const
+{
+    juce::ScopedLock sl(lock);
+    return static_cast<int>(availablePresets.size());
+}
+
+juce::String SoundFontManager::getCurrentPresetName() const
+{
+    juce::ScopedLock sl(lock);
+    if (currentPresetIndex >= 0 && currentPresetIndex < static_cast<int>(availablePresets.size()))
+    {
+        return availablePresets[currentPresetIndex].name;
+    }
+    return juce::String();
+}
+
+bool SoundFontManager::setPreset(int presetIndex)
+{
+    juce::ScopedLock sl(lock);
+    
+    if (soundFont == nullptr)
+        return false;
+    
+    int presetCount = static_cast<int>(availablePresets.size());
+    if (presetIndex < 0 || presetIndex >= presetCount)
+        return false;
+    
+    currentPresetIndex = presetIndex;
+    
+    // Update main soundfont - use preset index directly
+    tsf_channel_set_presetindex(soundFont, 9, presetIndex);
+    
+    // Update all group soundfonts
+    for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
+    {
+        if (soundFontGroups[i] != nullptr)
+        {
+            tsf_channel_set_presetindex(soundFontGroups[i], 9, presetIndex);
+        }
+    }
+    
+    DBG("Switched to preset " + juce::String(presetIndex) + ": " + 
+        availablePresets[presetIndex].name);
+    
+    return true;
+}
+
+bool SoundFontManager::setPresetByName(const juce::String& name)
+{
+    // First, find the preset index without holding the lock for setPreset
+    int foundIndex = -1;
+    {
+        juce::ScopedLock sl(lock);
+        for (size_t i = 0; i < availablePresets.size(); ++i)
+        {
+            if (availablePresets[i].name == name)
+            {
+                foundIndex = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+    
+    // Now call setPreset outside the lock scope (setPreset acquires its own lock)
+    if (foundIndex >= 0)
+        return setPreset(foundIndex);
+    
+    return false;
+}
+
 // ===== MULTI-OUT SUPPORT =====
 
 void SoundFontManager::setNoteToGroupMapper(std::function<int(int)> mapper)
@@ -317,19 +511,41 @@ void SoundFontManager::noteOnToGroup(int note, float velocity, int groupIndex)
     if (noteMutes.count(note) && noteMutes[note])
         return;
     
+    // Apply velocity override if set (for selecting specific velocity layers)
+    float effectiveVelocity = velocity;
+    auto velOverride = noteVelocityOverrides.find(note);
+    if (velOverride != noteVelocityOverrides.end())
+    {
+        effectiveVelocity = velOverride->second;
+    }
+    
     // Apply per-note volume
     float vol = noteVolumes.count(note) ? noteVolumes[note] : 0.5f;
-    float adjustedVelocity = velocity * vol;
+    float adjustedVelocity = effectiveVelocity * vol;
     
-    // Apply per-note pan (inverted for TSF)
+    // Apply per-note pan with preserve sample pan support
     float pan = notePans.count(note) ? notePans[note] : 0.0f;
-    float tsfPan = (1.0f - pan) / 2.0f;
+    float tsfPan;
+    
+    if (preserveSamplePan && std::abs(pan) < 0.01f)
+    {
+        // When preserveSamplePan is enabled and pan is centered,
+        // use 0.5 which applies no offset to sample's built-in pan
+        tsfPan = 0.5f;
+    }
+    else
+    {
+        // When user explicitly pans, use aggressive values to fully override sample pan
+        // TSF pan offset = tsfPan - 0.5, so we use values outside 0-1 range
+        // to ensure we can overcome any pre-panned samples
+        tsfPan = 0.5f + pan;  // Range -0.5 to 1.5 for panOffset -1.0 to +1.0
+        // Note: TSF internally clamps the final result, but the offset is applied first
+    }
     
     int presetCount = tsf_get_presetcount(sfGroup);
     if (presetCount > 0)
     {
-        // Use channel 9 for drums with channel-based note triggering
-        tsf_channel_set_presetindex(sfGroup, 9, 0);
+        // Use channel 9 for drums - bank already set in loadKit
         tsf_channel_set_pan(sfGroup, 9, tsfPan);
         tsf_channel_note_on(sfGroup, 9, note, adjustedVelocity);
     }

@@ -115,6 +115,10 @@ public:
     void stopComposerPlayback();
     bool isComposerPlaying() const { return composerPlaying; }
     
+    // Get current composer playback position (in beats from start of composition)
+    // Returns -1.0 if not playing
+    double getComposerPlaybackPosition() const { return composerPlaying ? internalPositionBeats : -1.0; }
+    
     // Export functions - create MIDI file for drag & drop
     juce::File exportGrooveToTempFile(int categoryIndex, int grooveIndex);
     juce::File exportCompositionToTempFile();

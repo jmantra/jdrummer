@@ -27,6 +27,23 @@ KitSelector::KitSelector()
         showKitMenu();
     };
     addAndMakeVisible(kitButton);
+    
+    // Preset label
+    presetLabel.setText("Preset:", juce::dontSendNotification);
+    presetLabel.setFont(juce::Font(12.0f));
+    presetLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF999999));
+    addAndMakeVisible(presetLabel);
+    
+    // Preset selection button
+    presetButton.setButtonText("Default");
+    presetButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF252525));
+    presetButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFCCCCCC));
+    presetButton.setColour(juce::TextButton::textColourOnId, juce::Colour(0xFFFFFFFF));
+    presetButton.onClick = [this]() {
+        DBG("KitSelector: Preset button clicked, showing preset menu");
+        showPresetMenu();
+    };
+    addAndMakeVisible(presetButton);
 }
 
 KitSelector::~KitSelector()
@@ -54,6 +71,22 @@ void KitSelector::resized()
     bounds.removeFromTop(8);
     
     kitButton.setBounds(bounds.removeFromTop(28));
+    
+    // Preset section (only show if we have multiple presets)
+    if (availablePresets.size() > 1)
+    {
+        bounds.removeFromTop(10);
+        presetLabel.setBounds(bounds.removeFromTop(16));
+        bounds.removeFromTop(3);
+        presetButton.setBounds(bounds.removeFromTop(24));
+        presetLabel.setVisible(true);
+        presetButton.setVisible(true);
+    }
+    else
+    {
+        presetLabel.setVisible(false);
+        presetButton.setVisible(false);
+    }
 }
 
 void KitSelector::setAvailableKits(const juce::StringArray& kits)
@@ -181,4 +214,79 @@ void KitSelector::filterKits()
     }
     
     DBG("KitSelector::filterKits - " + juce::String(filteredKits.size()) + " kits match filter");
+}
+
+// ===== PRESET SELECTION =====
+
+void KitSelector::setAvailablePresets(const juce::StringArray& presets)
+{
+    availablePresets = presets;
+    selectedPresetIndex = 0;
+    
+    DBG("KitSelector::setAvailablePresets - received " + juce::String(presets.size()) + " presets");
+    
+    if (presets.size() > 0)
+    {
+        presetButton.setButtonText(presets[0]);
+    }
+    else
+    {
+        presetButton.setButtonText("Default");
+    }
+    
+    // Trigger a resize to show/hide preset controls
+    resized();
+}
+
+void KitSelector::selectPreset(int presetIndex)
+{
+    if (presetIndex >= 0 && presetIndex < availablePresets.size())
+    {
+        selectedPresetIndex = presetIndex;
+        presetButton.setButtonText(availablePresets[presetIndex]);
+        DBG("KitSelector::selectPreset - selected: " + juce::String(presetIndex) + 
+            " (" + availablePresets[presetIndex] + ")");
+    }
+}
+
+int KitSelector::getSelectedPresetIndex() const
+{
+    return selectedPresetIndex;
+}
+
+void KitSelector::showPresetMenu()
+{
+    if (availablePresets.isEmpty())
+        return;
+    
+    juce::PopupMenu menu;
+    
+    int itemId = 1;
+    for (const auto& preset : availablePresets)
+    {
+        bool isTicked = ((itemId - 1) == selectedPresetIndex);
+        menu.addItem(itemId++, preset, true, isTicked);
+    }
+    
+    menu.showMenuAsync(juce::PopupMenu::Options()
+        .withTargetComponent(&presetButton)
+        .withMinimumWidth(presetButton.getWidth()),
+        [this](int result) {
+            if (result > 0 && result <= availablePresets.size())
+            {
+                int presetIndex = result - 1;
+                juce::String presetName = availablePresets[presetIndex];
+                DBG("KitSelector: Preset menu selected: " + juce::String(presetIndex) + 
+                    " (" + presetName + ")");
+                
+                selectedPresetIndex = presetIndex;
+                presetButton.setButtonText(presetName);
+                
+                if (onPresetSelected)
+                {
+                    DBG("KitSelector: Calling onPresetSelected for index: " + juce::String(presetIndex));
+                    onPresetSelected(presetIndex);
+                }
+            }
+        });
 }

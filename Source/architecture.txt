@@ -1,0 +1,91 @@
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                                    DAW (Host)                                       │
+│  • Creates PluginProcessor                                                          │
+│  • Calls processBlock() on audio thread                                             │
+│  • Sends MIDI events, tempo, transport state                                        │
+└───────────────────────────────────┬─────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           PluginProcessor.cpp                                       │
+│                        (Lives on AUDIO THREAD)                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │ OWNS (Composition):                                                          │    │
+│  │   • SoundFontManager soundFontManager  ──► Renders drum sounds              │    │
+│  │   • GrooveManager grooveManager        ──► Handles MIDI playback            │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                     │
+│  processBlock() {                                                                   │
+│    1. Read DAW tempo/position                                                       │
+│    2. grooveManager.processBlock() → get MIDI events                                │
+│    3. Process incoming MIDI                                                         │
+│    4. soundFontManager.render() → generate audio                                    │
+│  }                                                                                  │
+│                                                                                     │
+│  createEditor() → returns new PluginEditor(this)                                    │
+└──────────────────────────────────────┬──────────────────────────────────────────────┘
+                                       │ references (&)
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           PluginEditor.cpp                                          │
+│                         (Lives on UI THREAD)                                        │
+│                                                                                     │
+│  MEMBER VARIABLES (all created in constructor):                                     │
+│  ┌──────────────────────────────────────────────────────────────────────────────┐   │
+│  │                                                                              │   │
+│  │   Tab Buttons: drumKitTabButton | groovesTabButton | bandmateTabButton       │   │
+│  │                     │                  │                   │                 │   │
+│  │                     ▼                  ▼                   ▼                 │   │
+│  │              showTab(0)          showTab(1)          showTab(2)              │   │
+│  │                                                                              │   │
+│  └──────────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                     │
+│  showTab(index) {                                                                   │
+│    hide all panels                                                                  │
+│    setVisible(true) on selected panel                                               │
+│  }                                                                                  │
+│                                                                                     │
+└───────┬─────────────────────────────┬──────────────────────────────┬────────────────┘
+        │ contains                    │ contains                     │ contains
+        ▼                             ▼                              ▼
+┌───────────────────┐   ┌───────────────────────────────┐   ┌──────────────────────────┐
+│  TAB 0: DRUM KIT  │   │      TAB 1: GROOVES           │   │    TAB 2: MATCH          │
+│                   │   │      GroovesPanel.cpp         │   │    BandmatePanel.cpp     │
+│ ┌───────────────┐ │   │                               │   │                          │
+│ │DrumPadGrid.cpp│ │   │ ┌───────────────────────────┐ │   │ ┌──────────────────────┐ │
+│ │               │ │   │ │    GrooveBrowser.cpp      │ │   │ │   AudioAnalyzer.cpp  │ │
+│ │ ┌───────────┐ │ │   │ │ • Category list           │ │   │ │ • Load audio files   │ │
+│ │ │DrumPad.cpp│ │ │   │ │ • Groove list             │ │   │ │ • Detect tempo       │ │
+│ │ │(x16 pads) │ │ │   │ │ • Add to composer         │ │   │ │ • Find matching      │ │
+│ │ └───────────┘ │ │   │ └───────────────────────────┘ │   │ │   grooves            │ │
+│ └───────────────┘ │   │                               │   │ └──────────────────────┘ │
+│                   │   │ ┌───────────────────────────┐ │   │                          │
+│ ┌───────────────┐ │   │ │   GrooveComposer.cpp      │ │   │ ┌──────────────────────┐ │
+│ │PadControls.cpp│ │   │ │ • Timeline display        │ │   │ │   GrooveBrowser      │ │
+│ │ • Volume      │ │   │ │ • Play/Stop/Clear         │ │   │ │   (embedded copy)    │ │
+│ │ • Pan         │ │   │ │ • Export MIDI             │ │   │ └──────────────────────┘ │
+│ │ • Mute        │ │   │ │ • Drag to DAW             │ │   │                          │
+│ └───────────────┘ │   │ └───────────────────────────┘ │   │ ┌──────────────────────┐ │
+│                   │   │                               │   │ │   GrooveComposer     │ │
+│ ┌───────────────┐ │   └───────────────────────────────┘   │ │   (embedded copy)    │ │
+│ │KitSelector.cpp│ │                                       │ └──────────────────────┘ │
+│ └───────────────┘ │                                       │                          │
+└───────────────────┘                                       └──────────────────────────┘
+        │                             │                              │
+        │ callbacks                   │ callbacks                    │ callbacks
+        ▼                             ▼                              ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         BACKEND MANAGERS (No UI)                                    │
+│                                                                                     │
+│  ┌────────────────────────────────────┐   ┌────────────────────────────────────┐    │
+│  │     SoundFontManager.cpp           │   │      GrooveManager.cpp             │    │
+│  │                                    │   │                                    │    │
+│  │  • Load .sf2 soundfont files       │   │  • Scan Grooves/ folder            │    │
+│  │  • Store preset information        │   │  • Parse MIDI files                │    │
+│  │  • Render audio samples            │   │  • Manage composer timeline        │    │
+│  │  • Per-note volume/pan/mute        │   │  • Generate MIDI output            │    │
+│  │                                    │   │  • Export compositions             │    │
+│  │  Uses: TinySoundFont library       │   │  • Handle playback timing          │    │
+│  └────────────────────────────────────┘   └────────────────────────────────────┘    │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘

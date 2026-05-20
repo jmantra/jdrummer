@@ -828,6 +828,7 @@ std::vector<int> JdrummerAudioProcessor::getAndClearTriggeredNotes()
 void JdrummerAudioProcessor::setPreviewAudio(juce::AudioBuffer<float>* buffer, double sampleRate)
 {
     juce::ScopedLock sl(previewLock);
+    previewPlaying = false;
     previewBuffer = buffer;
     previewSampleRate = sampleRate;
     previewPosition = 0.0;
@@ -845,6 +846,7 @@ void JdrummerAudioProcessor::stopPreviewPlayback()
     juce::ScopedLock sl(previewLock);
     previewPlaying = false;
     previewPosition = 0.0;
+    previewBuffer = nullptr;
 }
 
 /*
