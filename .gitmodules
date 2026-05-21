@@ -1,0 +1,3 @@
+[submodule "libs/fluidsynth"]
+	path = libs/fluidsynth
+	url = https://github.com/FluidSynth/fluidsynth.git
