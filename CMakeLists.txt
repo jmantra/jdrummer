@@ -19,19 +19,6 @@ option(LINUX_INSTALL_SYSTEM "Install assets to system prefix on Linux" OFF)
 # Fetch JUCE via CPM (vendored cmake/CPM.cmake, upstream cpm-cmake v0.42.0)
 include(cmake/CPM.cmake)
 CPMAddPackage("gh:juce-framework/JUCE#8.0.11")
-CPMAddPackage(
-    NAME              clap-juce-extensions
-    GITHUB_REPOSITORY free-audio/clap-juce-extensions
-    GIT_TAG           0.26.0
-    GIT_SUBMODULES_RECURSE TRUE
-)
-
-# Audio plugin formats. LV2 is Linux-only because no AU/Windows hosts
-# cover it; CLAP, VST3, AU, and Standalone are handled per-OS by JUCE.
-set(AUDIO_FORMATS AU VST3 CLAP Standalone)
-if(UNIX AND NOT APPLE)
-    list(APPEND AUDIO_FORMATS LV2)
-endif()
 
 # Define the plugin/standalone target
 juce_add_plugin(jdrummer
@@ -39,7 +26,7 @@ juce_add_plugin(jdrummer
     BUNDLE_ID "com.justinehrlichman.jdrummer"
     PLUGIN_MANUFACTURER_CODE JEhr
     PLUGIN_CODE Jdrm
-    FORMATS ${AUDIO_FORMATS}
+    FORMATS AU VST3 Standalone
     PRODUCT_NAME "jdrummer"
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
@@ -47,13 +34,7 @@ juce_add_plugin(jdrummer
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD ${COPY_PLUGIN_AFTER_BUILD}
-    LV2URI https://github.com/jmantra/jdrummer
 )
-
-# CLAP wrapper (cross-platform)
-clap_juce_extensions_plugin(TARGET jdrummer
-    CLAP_ID "com.justinehrlichman.jdrummer"
-    CLAP_FEATURES instrument "drum-machine")
 
 # Source files
 target_sources(jdrummer
@@ -231,17 +212,6 @@ if(UNIX AND NOT APPLE)
         get_target_property(vst3_output ${PROJECT_NAME}_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
         install(DIRECTORY ${vst3_output}
                 DESTINATION ${CMAKE_INSTALL_LIBDIR}/vst3)
-    endif()
-
-    if(TARGET ${PROJECT_NAME}_LV2)
-        get_target_property(lv2_output ${PROJECT_NAME}_LV2 JUCE_PLUGIN_ARTEFACT_FILE)
-        install(DIRECTORY ${lv2_output}
-                DESTINATION ${CMAKE_INSTALL_LIBDIR}/lv2)
-    endif()
-
-    if(TARGET ${PROJECT_NAME}_CLAP)
-        install(TARGETS ${PROJECT_NAME}_CLAP
-                DESTINATION ${CMAKE_INSTALL_LIBDIR}/clap)
     endif()
 
     if(LINUX_INSTALL_SYSTEM)
