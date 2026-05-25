@@ -4,14 +4,16 @@ project(jdrummer VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Fetch JUCE from GitHub
-include(FetchContent)
-FetchContent_Declare(
-    JUCE
-    GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG 8.0.11
-)
-FetchContent_MakeAvailable(JUCE)
+# Emit compile_commands.json for editors / clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Copy built plugins to the per-user plugin directories after each build.
+# Set to OFF when producing system packages.
+option(COPY_PLUGIN_AFTER_BUILD "Copy JUCE Plugins after build" ON)
+
+# Fetch JUCE via CPM (vendored cmake/CPM.cmake, upstream cpm-cmake v0.42.0)
+include(cmake/CPM.cmake)
+CPMAddPackage("gh:juce-framework/JUCE#8.0.11")
 
 # Define the plugin/standalone target
 juce_add_plugin(jdrummer
@@ -26,7 +28,7 @@ juce_add_plugin(jdrummer
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    COPY_PLUGIN_AFTER_BUILD TRUE
+    COPY_PLUGIN_AFTER_BUILD ${COPY_PLUGIN_AFTER_BUILD}
 )
 
 # Source files
