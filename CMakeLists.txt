@@ -19,7 +19,12 @@ option(LINUX_INSTALL_SYSTEM "Install assets to system prefix on Linux" OFF)
 # Fetch JUCE via CPM (vendored cmake/CPM.cmake, upstream cpm-cmake v0.42.0)
 include(cmake/CPM.cmake)
 CPMAddPackage("gh:juce-framework/JUCE#8.0.11")
-CPMAddPackage("gh:free-audio/clap-juce-extensions@0.26.0")
+CPMAddPackage(
+    NAME              clap-juce-extensions
+    GITHUB_REPOSITORY free-audio/clap-juce-extensions
+    GIT_TAG           0.26.0
+    GIT_SUBMODULES_RECURSE TRUE
+)
 
 # Audio plugin formats. LV2 is Linux-only because no AU/Windows hosts
 # cover it; CLAP, VST3, AU, and Standalone are handled per-OS by JUCE.
