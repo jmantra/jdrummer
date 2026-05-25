@@ -11,6 +11,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Set to OFF when producing system packages.
 option(COPY_PLUGIN_AFTER_BUILD "Copy JUCE Plugins after build" ON)
 
+# When ON, skip the per-user/build-tree asset copy steps and instead
+# install assets into the system prefix (e.g. /usr/share/jdrummer) so
+# the build can be packaged for distribution. Linux-only.
+option(LINUX_INSTALL_SYSTEM "Install assets to system prefix on Linux" OFF)
+
 # Fetch JUCE via CPM (vendored cmake/CPM.cmake, upstream cpm-cmake v0.42.0)
 include(cmake/CPM.cmake)
 CPMAddPackage("gh:juce-framework/JUCE#8.0.11")
@@ -86,41 +91,43 @@ target_link_libraries(jdrummer
         juce::juce_recommended_warning_flags
 )
 
-# Copy soundfonts to build directory for standalone
-add_custom_command(TARGET jdrummer POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/soundfonts
-        $<TARGET_FILE_DIR:jdrummer>/soundfonts
-    COMMENT "Copying soundfonts to standalone build directory"
-)
+if(NOT LINUX_INSTALL_SYSTEM)
+    # Copy soundfonts to build directory for standalone
+    add_custom_command(TARGET jdrummer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/soundfonts
+            $<TARGET_FILE_DIR:jdrummer>/soundfonts
+        COMMENT "Copying soundfonts to standalone build directory"
+    )
 
-# Copy Grooves to build directory for standalone
-add_custom_command(TARGET jdrummer POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/Grooves
-        $<TARGET_FILE_DIR:jdrummer>/Grooves
-    COMMENT "Copying Grooves to standalone build directory"
-)
+    # Copy Grooves to build directory for standalone
+    add_custom_command(TARGET jdrummer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/Grooves
+            $<TARGET_FILE_DIR:jdrummer>/Grooves
+        COMMENT "Copying Grooves to standalone build directory"
+    )
 
-# Copy soundfonts to VST3 bundle Resources folder (after build)
-add_custom_command(TARGET jdrummer_VST3 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-        "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/soundfonts"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/soundfonts"
-        "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/soundfonts"
-    COMMENT "Copying soundfonts to VST3 bundle"
-)
+    # Copy soundfonts to VST3 bundle Resources folder (after build)
+    add_custom_command(TARGET jdrummer_VST3 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/soundfonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/soundfonts"
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/soundfonts"
+        COMMENT "Copying soundfonts to VST3 bundle"
+    )
 
-# Copy Grooves to VST3 bundle Resources folder (after build)
-add_custom_command(TARGET jdrummer_VST3 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-        "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/Grooves"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/Grooves"
-        "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/Grooves"
-    COMMENT "Copying Grooves to VST3 bundle"
-)
+    # Copy Grooves to VST3 bundle Resources folder (after build)
+    add_custom_command(TARGET jdrummer_VST3 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/Grooves"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/Grooves"
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/Grooves"
+        COMMENT "Copying Grooves to VST3 bundle"
+    )
+endif()
 
 if(APPLE)
     # Copy soundfonts to AU bundle Resources folder (after build)
@@ -151,40 +158,68 @@ if(APPLE)
     )
 endif()
 
-# Installation targets for distribution
-# Determine platform-specific install location
-if(APPLE)
-    set(SOUNDFONTS_INSTALL_DIR "$ENV{HOME}/Library/Application Support/jdrummer/soundfonts")
-    set(GROOVES_INSTALL_DIR "$ENV{HOME}/Library/Application Support/jdrummer/Grooves")
-elseif(WIN32)
-    set(SOUNDFONTS_INSTALL_DIR "$ENV{APPDATA}/jdrummer/soundfonts")
-    set(GROOVES_INSTALL_DIR "$ENV{APPDATA}/jdrummer/Grooves")
-else()
-    set(SOUNDFONTS_INSTALL_DIR "$ENV{HOME}/.local/share/jdrummer/soundfonts")
-    set(GROOVES_INSTALL_DIR "$ENV{HOME}/.local/share/jdrummer/Grooves")
+if(NOT LINUX_INSTALL_SYSTEM)
+    # Installation targets for distribution
+    # Determine platform-specific install location
+    if(APPLE)
+        set(SOUNDFONTS_INSTALL_DIR "$ENV{HOME}/Library/Application Support/jdrummer/soundfonts")
+        set(GROOVES_INSTALL_DIR "$ENV{HOME}/Library/Application Support/jdrummer/Grooves")
+    elseif(WIN32)
+        set(SOUNDFONTS_INSTALL_DIR "$ENV{APPDATA}/jdrummer/soundfonts")
+        set(GROOVES_INSTALL_DIR "$ENV{APPDATA}/jdrummer/Grooves")
+    else()
+        set(SOUNDFONTS_INSTALL_DIR "$ENV{HOME}/.local/share/jdrummer/soundfonts")
+        set(GROOVES_INSTALL_DIR "$ENV{HOME}/.local/share/jdrummer/Grooves")
+    endif()
+
+    # Custom target to install soundfonts to user directory
+    add_custom_target(install_soundfonts
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${SOUNDFONTS_INSTALL_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/soundfonts
+            "${SOUNDFONTS_INSTALL_DIR}"
+        COMMENT "Installing soundfonts to ${SOUNDFONTS_INSTALL_DIR}"
+    )
+
+    # Custom target to install grooves to user directory
+    add_custom_target(install_grooves
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${GROOVES_INSTALL_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/Grooves
+            "${GROOVES_INSTALL_DIR}"
+        COMMENT "Installing Grooves to ${GROOVES_INSTALL_DIR}"
+    )
+
+    # Combined install target
+    add_custom_target(install_assets DEPENDS install_soundfonts install_grooves)
+
+    message(STATUS "Soundfonts will be installed to: ${SOUNDFONTS_INSTALL_DIR}")
+    message(STATUS "Grooves will be installed to: ${GROOVES_INSTALL_DIR}")
 endif()
 
-# Custom target to install soundfonts to user directory
-add_custom_target(install_soundfonts
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${SOUNDFONTS_INSTALL_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/soundfonts
-        "${SOUNDFONTS_INSTALL_DIR}"
-    COMMENT "Installing soundfonts to ${SOUNDFONTS_INSTALL_DIR}"
-)
+# Linux system-wide install targets (used by distro packaging).
+# Configure with -DLINUX_INSTALL_SYSTEM=ON and then run
+# `cmake --install build --prefix /usr` (or DESTDIR-based packaging).
+if(UNIX AND NOT APPLE)
+    include(GNUInstallDirs)
 
-# Custom target to install grooves to user directory
-add_custom_target(install_grooves
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${GROOVES_INSTALL_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/Grooves
-        "${GROOVES_INSTALL_DIR}"
-    COMMENT "Installing Grooves to ${GROOVES_INSTALL_DIR}"
-)
+    if(TARGET ${PROJECT_NAME}_Standalone)
+        install(TARGETS ${PROJECT_NAME}_Standalone
+                DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
 
-# Combined install target
-add_custom_target(install_assets DEPENDS install_soundfonts install_grooves)
+    if(TARGET ${PROJECT_NAME}_VST3)
+        get_target_property(vst3_output ${PROJECT_NAME}_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
+        install(DIRECTORY ${vst3_output}
+                DESTINATION ${CMAKE_INSTALL_LIBDIR}/vst3)
+    endif()
 
-message(STATUS "Soundfonts will be installed to: ${SOUNDFONTS_INSTALL_DIR}")
-message(STATUS "Grooves will be installed to: ${GROOVES_INSTALL_DIR}")
+    if(LINUX_INSTALL_SYSTEM)
+        message(STATUS "Installing assets to ${CMAKE_INSTALL_FULL_DATADIR}/jdrummer")
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/soundfonts
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/jdrummer)
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Grooves
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/jdrummer)
+    endif()
+endif()
 

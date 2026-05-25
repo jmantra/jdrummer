@@ -97,6 +97,8 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
     // Linux: ~/.local/share/jdrummer/soundfonts/
     auto userHome = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
     searchPaths.push_back(userHome.getChildFile(".local/share/jdrummer/soundfonts"));
+    // Linux: /usr/share/jdrummer/soundfonts/ (system / packaged install)
+    searchPaths.push_back(juce::File("/usr/share/jdrummer/soundfonts"));
 #endif
 
     // Get path to the running executable
@@ -186,6 +188,8 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
 #else
     grooveSearchPaths.push_back(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
         .getChildFile(".local/share/jdrummer/Grooves"));
+    // Linux: /usr/share/jdrummer/Grooves/ (system / packaged install)
+    grooveSearchPaths.push_back(juce::File("/usr/share/jdrummer/Grooves"));
 #endif
 
 #if JUCE_MAC
