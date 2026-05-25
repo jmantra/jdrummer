@@ -1,10 +1,10 @@
 /*
     AudioAnalyzer.h
     ===============
-    
+
     Analyzes audio files to detect tempo and rhythm patterns.
     Uses minibpm for BPM detection and custom onset detection for rhythm analysis.
-    
+
     This enables the "Bandmate" feature where users can drop in an audio clip
     and get matching drum grooves from the library.
 */
@@ -50,36 +50,36 @@ class AudioAnalyzer
 public:
     AudioAnalyzer();
     ~AudioAnalyzer();
-    
+
     // Load an audio file for analysis
     bool loadAudioFile(const juce::File& file);
-    
+
     // Check if audio is loaded
     bool hasAudio() const { return audioLoaded; }
-    
+
     // Get the loaded audio file info
     juce::String getLoadedFileName() const { return loadedFileName; }
     double getAudioLengthSeconds() const { return audioLengthSeconds; }
     double getAudioSampleRate() const { return audioSampleRate; }
-    
+
     // Analyze the loaded audio and detect rhythm pattern
     bool analyzeAudio();
-    
+
     // Get the detected rhythm pattern
     const RhythmPattern& getDetectedPattern() const { return detectedPattern; }
-    
+
     // Find matching grooves from the library
     std::vector<GrooveMatch> findMatchingGrooves(GrooveManager& grooveManager, int maxResults = 10);
-    
+
     // Clear the loaded audio
     void clear();
-    
+
     // Get analysis progress (0-100)
     int getAnalysisProgress() const { return analysisProgress; }
-    
+
     // Check if analysis is complete
     bool isAnalysisComplete() const { return analysisComplete; }
-    
+
     // Get the audio buffer for playback
     juce::AudioBuffer<float>* getAudioBuffer() { return audioLoaded ? &audioBuffer : nullptr; }
 
@@ -90,24 +90,22 @@ private:
     double audioLengthSeconds = 0.0;
     juce::String loadedFileName;
     bool audioLoaded = false;
-    
+
     // Analysis results
     RhythmPattern detectedPattern;
     bool analysisComplete = false;
     int analysisProgress = 0;
-    
+
     // Internal analysis methods
     double extractBPMFromFilename(const juce::String& filename);
     double detectBPM();
     std::vector<double> detectOnsets();
     double calculatePatternSimilarity(const RhythmPattern& pattern, const Groove& groove);
-    
+
     // Onset detection parameters
     static constexpr double onsetThreshold = 0.15;
     static constexpr int hopSize = 512;
     static constexpr int windowSize = 1024;
-    
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioAnalyzer)
 };
-
-

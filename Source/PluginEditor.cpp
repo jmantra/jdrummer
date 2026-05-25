@@ -1,27 +1,27 @@
 /*
     PluginEditor.cpp
     ================
-    
+
     Implementation of the plugin's user interface.
-    
+
     KEY JUCE UI CONCEPTS
     --------------------
-    
+
     1. COMPONENTS: Everything visible is a Component
        - Components form a parent-child tree
        - Parents clip and position their children
        - addAndMakeVisible() adds a child and makes it visible
-    
+
     2. PAINTING: Override paint() to draw custom graphics
        - Never call paint() directly - call repaint()
        - JUCE decides when to actually repaint
        - Keep paint() fast for smooth UI
-    
+
     3. LAYOUT: Override resized() to position children
        - Called when component size changes
        - Use setBounds() to position children
        - Use getLocalBounds() to get available space
-    
+
     4. EVENTS: Mouse/keyboard events flow through the tree
        - Events go to the topmost component at that position
        - Components can block or pass events to parents
@@ -34,12 +34,12 @@
     CONSTRUCTOR
     -----------
     Sets up all the UI components.
-    
+
     INITIALIZER LIST ORDER
     ----------------------
     Members are initialized in the order they're DECLARED in the class,
     not the order they appear in the initializer list!
-    
+
     AudioProcessorEditor(*this) passes our processor to the parent class,
     which stores it and makes it available via getAudioProcessor().
 */
@@ -51,7 +51,7 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
         LABEL SETUP
         -----------
         Labels display text. They're simple but commonly used components.
-        
+
         dontSendNotification means "don't trigger any callbacks" -
         useful during initialization when callbacks might not be ready.
     */
@@ -60,18 +60,18 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
     titleLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF00BFFF));
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);  // Add to component tree and make visible
-    
+
     // Kit label
     kitLabel.setText("Kit:", juce::dontSendNotification);
     kitLabel.setFont(juce::Font(14.0f, juce::Font::bold));
     kitLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFCCCCCC));
     addAndMakeVisible(kitLabel);
-    
+
     /*
         COMBOBOX SETUP
         --------------
         ComboBox is a dropdown menu for selecting from a list.
-        
+
         setColour() changes specific color IDs for customization.
         Each component type has its own ColourIds enum.
     */
@@ -79,35 +79,35 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
     kitComboBox.setColour(juce::ComboBox::textColourId, juce::Colour(0xFFEEEEEE));
     kitComboBox.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xFF444444));
     kitComboBox.setColour(juce::ComboBox::arrowColourId, juce::Colour(0xFF00BFFF));
-    
+
     /*
         LAMBDA CALLBACKS
         ----------------
         onChange is a std::function that gets called when selection changes.
-        
+
         We use a LAMBDA EXPRESSION to define the callback inline:
-        
+
         [this]() { ... }
-        
+
         - [this] = CAPTURE LIST - makes 'this' pointer available inside the lambda
         - () = PARAMETERS - this lambda takes no parameters
         - { ... } = BODY - code to execute
-        
+
         Lambdas are anonymous functions - functions without a name.
         They're great for callbacks because you don't need a separate method.
     */
     kitComboBox.onChange = [this]() { onKitComboBoxChanged(); };
     addAndMakeVisible(kitComboBox);
-    
+
     // Populate the kit dropdown with available soundfonts
     populateKitComboBox();
-    
+
     // Preset label
     presetLabel.setText("Preset:", juce::dontSendNotification);
     presetLabel.setFont(juce::Font(12.0f));
     presetLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF999999));
     addAndMakeVisible(presetLabel);
-    
+
     // Preset ComboBox
     presetComboBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xFF252525));
     presetComboBox.setColour(juce::ComboBox::textColourId, juce::Colour(0xFFCCCCCC));
@@ -115,10 +115,10 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
     presetComboBox.setColour(juce::ComboBox::arrowColourId, juce::Colour(0xFF00BFFF));
     presetComboBox.onChange = [this]() { onPresetComboBoxChanged(); };
     addAndMakeVisible(presetComboBox);
-    
+
     // Populate preset dropdown for the initial kit
     populatePresetComboBox();
-    
+
     /*
         TAB BUTTONS
         -----------
@@ -131,7 +131,7 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
     drumKitTabButton.setColour(juce::TextButton::textColourOnId, juce::Colour(0xFFFFFFFF));
     drumKitTabButton.onClick = [this]() { showTab(0); };
     addAndMakeVisible(drumKitTabButton);
-    
+
     groovesTabButton.setButtonText("GROOVES");
     groovesTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
     groovesTabButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF00BFFF));
@@ -139,7 +139,7 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
     groovesTabButton.setColour(juce::TextButton::textColourOnId, juce::Colour(0xFFFFFFFF));
     groovesTabButton.onClick = [this]() { showTab(1); };
     addAndMakeVisible(groovesTabButton);
-    
+
     bandmateTabButton.setButtonText("MATCH");
     bandmateTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
     bandmateTabButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF00BFFF));
@@ -147,38 +147,38 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
     bandmateTabButton.setColour(juce::TextButton::textColourOnId, juce::Colour(0xFFFFFFFF));
     bandmateTabButton.onClick = [this]() { showTab(2); };
     addAndMakeVisible(bandmateTabButton);
-    
+
     /*
         ADD CHILD COMPONENTS
         --------------------
         These custom components (DrumPadGrid, PadControls) are added
         the same way as built-in components.
-        
+
         They're declared as member variables, so they exist as long
         as the editor exists.
     */
     addAndMakeVisible(drumPadGrid);
     addAndMakeVisible(padControls);
-    
+
     // Setup the grooves panel
     groovesPanel.setProcessor(&audioProcessor);
     groovesPanel.setGrooveManager(&audioProcessor.getGrooveManager());
     addChildComponent(groovesPanel);  // Hidden initially
-    
+
     // Setup the bandmate panel
     bandmatePanel.setProcessor(&audioProcessor);
     bandmatePanel.setGrooveManager(&audioProcessor.getGrooveManager());
     addChildComponent(bandmatePanel);  // Hidden initially
-    
+
     // Connect all the callbacks between components
     setupCallbacks();
-    
+
     // Initialize pad controls with the first pad's settings
     updatePadControlsForSelectedPad();
-    
+
     // Start with Drum Kit tab selected
     showTab(0);
-    
+
     /*
         SET EDITOR SIZE
         ---------------
@@ -186,7 +186,7 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
         The DAW will create a window of this size.
     */
     setSize(950, 650);  // Increased size for tabs and bandmate panel
-    
+
     /*
         START TIMER
         -----------
@@ -211,23 +211,23 @@ void JdrummerAudioProcessorEditor::populateKitComboBox()
 {
     // Clear existing items without triggering onChange
     kitComboBox.clear(juce::dontSendNotification);
-    
+
     // Get list of kits from the processor
     auto kits = audioProcessor.getSoundFontManager().getAvailableKits();
     auto currentKit = audioProcessor.getSoundFontManager().getCurrentKitName();
-    
+
     int selectedIndex = 0;
     int id = 1;  // ComboBox items need unique IDs starting from 1
-    
+
     for (int i = 0; i < kits.size(); ++i)
     {
         kitComboBox.addItem(kits[i], id++);
-        
+
         // Remember which index is the current kit
         if (kits[i] == currentKit)
             selectedIndex = i;
     }
-    
+
     // Select the current kit without triggering onChange
     if (kits.size() > 0)
         kitComboBox.setSelectedItemIndex(selectedIndex, juce::dontSendNotification);
@@ -245,7 +245,7 @@ void JdrummerAudioProcessorEditor::onKitComboBoxChanged()
     {
         // Tell the processor to load the new kit
         audioProcessor.getSoundFontManager().loadKit(kitName);
-        
+
         // Update preset dropdown for the new kit
         populatePresetComboBox();
     }
@@ -259,21 +259,21 @@ void JdrummerAudioProcessorEditor::onKitComboBoxChanged()
 void JdrummerAudioProcessorEditor::populatePresetComboBox()
 {
     presetComboBox.clear(juce::dontSendNotification);
-    
+
     auto presets = audioProcessor.getSoundFontManager().getAvailablePresets();
     int currentPreset = audioProcessor.getSoundFontManager().getCurrentPresetIndex();
-    
+
     int id = 1;
     for (const auto& preset : presets)
     {
         presetComboBox.addItem(preset.name, id++);
     }
-    
+
     // Only show preset selector if there are multiple presets
     bool hasMultiplePresets = presets.size() > 1;
     presetLabel.setVisible(hasMultiplePresets);
     presetComboBox.setVisible(hasMultiplePresets);
-    
+
     if (presets.size() > 0)
     {
         presetComboBox.setSelectedItemIndex(currentPreset, juce::dontSendNotification);
@@ -298,7 +298,7 @@ void JdrummerAudioProcessorEditor::onPresetComboBoxChanged()
     SETUP CALLBACKS
     ---------------
     This wires up all the communication between components.
-    
+
     OBSERVER PATTERN
     ----------------
     Instead of components directly calling each other, we use callbacks:
@@ -306,7 +306,7 @@ void JdrummerAudioProcessorEditor::onPresetComboBoxChanged()
     - Component B sets that callback to its own method
     - When A's event happens, A calls the callback
     - B's method runs without A knowing about B
-    
+
     Benefits:
     - Loose coupling (components don't know about each other)
     - Easy to change behavior
@@ -318,29 +318,29 @@ void JdrummerAudioProcessorEditor::setupCallbacks()
         PAD PRESSED CALLBACK
         --------------------
         When a pad is clicked, trigger the note in the processor.
-        
+
         [this] captures the 'this' pointer so we can access audioProcessor.
     */
     drumPadGrid.onPadPressed = [this](int note, float velocity) {
         audioProcessor.triggerNote(note, velocity);
     };
-    
+
     drumPadGrid.onPadReleased = [this](int note) {
         audioProcessor.releaseNote(note);
     };
-    
+
     /*
         PAD SELECTED CALLBACK
         ---------------------
         When a pad is clicked, also update the controls to show that pad's settings.
-        
+
         juce::ignoreUnused() suppresses "unused parameter" warnings.
     */
     drumPadGrid.onPadSelected = [this](int note) {
         juce::ignoreUnused(note);
         updatePadControlsForSelectedPad();
     };
-    
+
     /*
         VOLUME/PAN CALLBACKS
         --------------------
@@ -349,21 +349,21 @@ void JdrummerAudioProcessorEditor::setupCallbacks()
     padControls.onVolumeChanged = [this](int note, float volume) {
         audioProcessor.getSoundFontManager().setNoteVolume(note, volume);
     };
-    
+
     padControls.onPanChanged = [this](int note, float pan) {
         audioProcessor.getSoundFontManager().setNotePan(note, pan);
     };
-    
+
     padControls.onMuteChanged = [this](int note, bool muted) {
         audioProcessor.getSoundFontManager().setNoteMute(note, muted);
     };
-    
+
     /*
         STATE RESTORATION CALLBACK
         --------------------------
         When the processor loads state (from a saved project),
         it calls this to update the UI.
-        
+
         MessageManager::callAsync() schedules code to run on the
         message thread (UI thread). This is important because
         state restoration might happen on a different thread.
@@ -390,10 +390,10 @@ void JdrummerAudioProcessorEditor::updatePadControlsForSelectedPad()
 {
     int note = drumPadGrid.getSelectedNote();
     juce::String padName = getPadNameForNote(note);
-    
+
     // Update the controls to show this pad
     padControls.setSelectedPad(note, padName);
-    
+
     // Get current values from the processor
     padControls.setVolume(audioProcessor.getSoundFontManager().getNoteVolume(note));
     padControls.setPan(audioProcessor.getSoundFontManager().getNotePan(note));
@@ -404,7 +404,7 @@ void JdrummerAudioProcessorEditor::updatePadControlsForSelectedPad()
     GET PAD NAME FOR NOTE
     ---------------------
     Maps MIDI note numbers to human-readable drum names.
-    
+
     STATIC LOCAL VARIABLE
     ---------------------
     'static const' means this map is created once and shared by all calls.
@@ -430,12 +430,12 @@ juce::String JdrummerAudioProcessorEditor::getPadNameForNote(int note)
         { 51, "Ride" },
         { 53, "Ride Bell" }
     };
-    
+
     // .find() looks up the note in the map
     auto it = noteNames.find(note);
     if (it != noteNames.end())
         return it->second;  // Found - return the name
-    
+
     // Not in our map - return a generic name
     return "Note " + juce::String(note);
 }
@@ -444,7 +444,7 @@ juce::String JdrummerAudioProcessorEditor::getPadNameForNote(int note)
     TIMER CALLBACK
     --------------
     Called 30 times per second to check for MIDI notes from the DAW.
-    
+
     We use a polling approach because the audio thread can't directly
     update the UI - that would cause threading issues.
 */
@@ -452,7 +452,7 @@ void JdrummerAudioProcessorEditor::timerCallback()
 {
     // Get notes that were triggered since last check
     auto triggeredNotes = audioProcessor.getAndClearTriggeredNotes();
-    
+
     // Light up the corresponding pads
     for (int note : triggeredNotes)
     {
@@ -464,7 +464,7 @@ void JdrummerAudioProcessorEditor::timerCallback()
     PAINT
     -----
     Draw the editor's background.
-    
+
     This is called by JUCE when the component needs to be drawn.
     Don't call paint() directly - call repaint() to request a redraw.
 */
@@ -474,7 +474,7 @@ void JdrummerAudioProcessorEditor::paint(juce::Graphics& g)
         GRADIENT BACKGROUND
         -------------------
         ColourGradient creates a smooth transition between colors.
-        
+
         Parameters:
         - Start color and position
         - End color and position
@@ -487,7 +487,7 @@ void JdrummerAudioProcessorEditor::paint(juce::Graphics& g)
     );
     g.setGradientFill(gradient);
     g.fillAll();  // Fill the entire component
-    
+
     /*
         SCANLINE EFFECT
         ---------------
@@ -499,11 +499,11 @@ void JdrummerAudioProcessorEditor::paint(juce::Graphics& g)
     {
         g.drawHorizontalLine(y, 0.0f, static_cast<float>(getWidth()));
     }
-    
+
     // Header separator line (cyan with transparency)
     g.setColour(juce::Colour(0xFF00BFFF).withAlpha(0.3f));
     g.drawHorizontalLine(70, 20.0f, static_cast<float>(getWidth()) - 20.0f);
-    
+
     // Content separator line
     g.setColour(juce::Colour(0xFF333333));
     g.drawHorizontalLine(getHeight() - 145, 20.0f, static_cast<float>(getWidth()) - 20.0f);
@@ -513,21 +513,21 @@ void JdrummerAudioProcessorEditor::paint(juce::Graphics& g)
     RESIZED
     -------
     Position all child components when the size changes.
-    
+
     LAYOUT STRATEGY
     ---------------
     We use a "remove from edges" strategy:
     1. Start with the full bounds
     2. Remove pieces from top/bottom/left/right for each component
     3. What's left goes to the main content area
-    
+
     This is flexible and adapts to different sizes.
 */
 void JdrummerAudioProcessorEditor::resized()
 {
     // Start with full bounds
     auto bounds = getLocalBounds();
-    
+
     /*
         HEADER AREA (70px)
         ------------------
@@ -535,11 +535,11 @@ void JdrummerAudioProcessorEditor::resized()
     */
     auto headerBounds = bounds.removeFromTop(70);
     headerBounds = headerBounds.reduced(20, 15);  // Add padding
-    
+
     // Title on the left
     titleLabel.setBounds(headerBounds.removeFromLeft(150));
     headerBounds.removeFromLeft(20);  // Spacing
-    
+
     // Tab buttons in the center
     auto tabArea = headerBounds.removeFromLeft(340);
     drumKitTabButton.setBounds(tabArea.removeFromLeft(100));
@@ -547,18 +547,18 @@ void JdrummerAudioProcessorEditor::resized()
     groovesTabButton.setBounds(tabArea.removeFromLeft(100));
     tabArea.removeFromLeft(10);
     bandmateTabButton.setBounds(tabArea.removeFromLeft(100));
-    
+
     headerBounds.removeFromLeft(20);  // Spacing
-    
+
     // Kit selector on the right (only visible in Drum Kit tab, but always positioned)
     // Dynamically size based on whether preset controls are visible
     bool showPresets = presetComboBox.isVisible();
     int kitAreaWidth = showPresets ? 450 : 260;
-    
+
     auto kitArea = headerBounds.removeFromRight(kitAreaWidth);
     kitLabel.setBounds(kitArea.removeFromLeft(30));
     kitArea.removeFromLeft(5);  // Spacing
-    
+
     if (showPresets)
     {
         kitComboBox.setBounds(kitArea.removeFromLeft(170));
@@ -572,7 +572,7 @@ void JdrummerAudioProcessorEditor::resized()
         // No presets visible - give all remaining space to kit combobox
         kitComboBox.setBounds(kitArea);
     }
-    
+
     /*
         BOTTOM CONTROLS AREA (140px) - Only for Drum Kit tab
         ----------------------------
@@ -580,7 +580,7 @@ void JdrummerAudioProcessorEditor::resized()
     auto bottomBounds = bounds.removeFromBottom(170);
     bottomBounds = bottomBounds.reduced(20, 10);
     padControls.setBounds(bottomBounds);
-    
+
     /*
         MAIN CONTENT AREA
         -----------------
@@ -588,13 +588,13 @@ void JdrummerAudioProcessorEditor::resized()
     */
     auto mainBounds = bounds.reduced(10, 10);
     drumPadGrid.setBounds(mainBounds);
-    
+
     // Grooves panel takes the full content area (including bottom where padControls would be)
     auto groovesBounds = getLocalBounds();
     groovesBounds.removeFromTop(70);  // Header
     groovesBounds = groovesBounds.reduced(10, 10);
     groovesPanel.setBounds(groovesBounds);
-    
+
     // Bandmate panel takes the same area as grooves panel
     bandmatePanel.setBounds(groovesBounds);
 }
@@ -607,7 +607,7 @@ void JdrummerAudioProcessorEditor::resized()
 void JdrummerAudioProcessorEditor::showTab(int tabIndex)
 {
     currentTab = tabIndex;
-    
+
     // Reset all tab button colors
     drumKitTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
     drumKitTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
@@ -615,7 +615,7 @@ void JdrummerAudioProcessorEditor::showTab(int tabIndex)
     groovesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
     bandmateTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
     bandmateTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
-    
+
     // Hide all panels
     drumPadGrid.setVisible(false);
     padControls.setVisible(false);
@@ -623,13 +623,13 @@ void JdrummerAudioProcessorEditor::showTab(int tabIndex)
     kitComboBox.setVisible(false);
     groovesPanel.setVisible(false);
     bandmatePanel.setVisible(false);
-    
+
     if (tabIndex == 0)
     {
         // Drum Kit tab
         drumKitTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF00BFFF));
         drumKitTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFFFFFFF));
-        
+
         drumPadGrid.setVisible(true);
         padControls.setVisible(true);
         kitLabel.setVisible(true);
@@ -640,7 +640,7 @@ void JdrummerAudioProcessorEditor::showTab(int tabIndex)
         // Grooves tab
         groovesTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF00BFFF));
         groovesTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFFFFFFF));
-        
+
         groovesPanel.setVisible(true);
         groovesPanel.refresh();
     }
@@ -649,9 +649,9 @@ void JdrummerAudioProcessorEditor::showTab(int tabIndex)
         // Bandmate tab
         bandmateTabButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF00BFFF));
         bandmateTabButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFFFFFFF));
-        
+
         bandmatePanel.setVisible(true);
     }
-    
+
     repaint();
 }

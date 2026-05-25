@@ -1,19 +1,19 @@
 /*
     PluginProcessor.cpp
     ===================
-    
+
     This is the IMPLEMENTATION FILE for our audio processor.
     Here we write the actual code for all the methods declared in the header.
-    
+
     AUDIO PROCESSING FUNDAMENTALS
     -----------------------------
     Audio plugins process sound in small chunks called "buffers" or "blocks".
     Typical buffer sizes are 128, 256, 512, or 1024 samples.
-    
+
     At 44100 Hz sample rate with a 512 sample buffer:
     - processBlock() is called 44100/512 ≈ 86 times per second
     - Each call must complete in ~11.6 milliseconds or you get audio glitches
-    
+
     This is why audio code must be FAST and avoid:
     - Memory allocation (new/delete)
     - Locks that might block
@@ -31,7 +31,7 @@
     It runs BEFORE the constructor body {} and is the preferred way to:
     1. Call parent class constructors
     2. Initialize member variables
-    
+
     BusesProperties() is JUCE's way of defining audio input/output configuration.
     We're saying: "This plugin has stereo output, no input"
 */
@@ -66,22 +66,22 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
         - As a standalone app
         - As a VST3 plugin in various DAWs
         - During development vs. after installation
-        
+
         Solution: Try multiple locations in priority order.
     */
-    
+
     juce::File soundFontsPath;
-    
+
     // std::vector is C++'s dynamic array - it can grow and shrink
     // juce::File is JUCE's cross-platform file/directory class
     std::vector<juce::File> searchPaths;
-    
+
     /*
         PREPROCESSOR DIRECTIVES
         -----------------------
         #if, #elif, #else, #endif are evaluated at COMPILE TIME.
         The compiler only includes the code for your platform.
-        
+
         JUCE_MAC, JUCE_WINDOWS, JUCE_LINUX are defined by JUCE
         based on what platform you're compiling for.
     */
@@ -98,10 +98,10 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
     auto userHome = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
     searchPaths.push_back(userHome.getChildFile(".local/share/jdrummer/soundfonts"));
 #endif
-    
+
     // Get path to the running executable
     auto executablePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
-    
+
 #if JUCE_MAC
     // macOS VST3 bundles have a specific structure
     searchPaths.push_back(executablePath.getParentDirectory().getParentDirectory()
@@ -111,13 +111,13 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
     auto vst3Contents = executablePath.getParentDirectory().getParentDirectory();
     searchPaths.push_back(vst3Contents.getChildFile("Resources/soundfonts"));
 #endif
-    
+
     // Next to the executable (for standalone builds)
     searchPaths.push_back(executablePath.getParentDirectory().getChildFile("soundfonts"));
-    
+
     // Current working directory (for development)
     searchPaths.push_back(juce::File::getCurrentWorkingDirectory().getChildFile("soundfonts"));
-    
+
     // Check parent directories (fallback for various build configurations)
     auto parent = executablePath.getParentDirectory();
     for (int i = 0; i < 5; ++i)
@@ -125,13 +125,13 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
         searchPaths.push_back(parent.getChildFile("soundfonts"));
         parent = parent.getParentDirectory();
     }
-    
+
     /*
         RANGE-BASED FOR LOOP
         --------------------
         "for (const auto& path : searchPaths)" is modern C++ syntax meaning:
         "for each path in searchPaths"
-        
+
         - const: we won't modify path
         - auto: compiler figures out the type (juce::File)
         - &: reference, not a copy (more efficient)
@@ -149,25 +149,25 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
             }
         }
     }
-    
+
     if (soundFontsPath.exists())
     {
         soundFontManager.setSoundFontsPath(soundFontsPath);
     }
-    
+
     // Load a default kit
     auto kits = soundFontManager.getAvailableKits();
-    
+
     if (kits.size() > 0)
     {
         // Try to load "Standard" first, otherwise use the first kit
         int defaultIndex = kits.indexOf("Standard");
         if (defaultIndex < 0)  // indexOf returns -1 if not found
             defaultIndex = 0;
-        
+
         soundFontManager.loadKit(kits[defaultIndex]);
     }
-    
+
     /*
         FINDING GROOVES
         ---------------
@@ -176,7 +176,7 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
     */
     juce::File groovesPath;
     std::vector<juce::File> grooveSearchPaths;
-    
+
 #if JUCE_MAC
     grooveSearchPaths.push_back(juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
         .getChildFile("jdrummer/Grooves"));
@@ -187,17 +187,17 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
     grooveSearchPaths.push_back(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
         .getChildFile(".local/share/jdrummer/Grooves"));
 #endif
-    
+
 #if JUCE_MAC
     grooveSearchPaths.push_back(executablePath.getParentDirectory().getParentDirectory()
         .getChildFile("Resources/Grooves"));
 #else
     grooveSearchPaths.push_back(vst3Contents.getChildFile("Resources/Grooves"));
 #endif
-    
+
     grooveSearchPaths.push_back(executablePath.getParentDirectory().getChildFile("Grooves"));
     grooveSearchPaths.push_back(juce::File::getCurrentWorkingDirectory().getChildFile("Grooves"));
-    
+
     // Check parent directories for Grooves folder
     parent = executablePath.getParentDirectory();
     for (int i = 0; i < 5; ++i)
@@ -205,7 +205,7 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
         grooveSearchPaths.push_back(parent.getChildFile("Grooves"));
         parent = parent.getParentDirectory();
     }
-    
+
     for (const auto& path : grooveSearchPaths)
     {
         if (path.exists() && path.isDirectory())
@@ -220,7 +220,7 @@ JdrummerAudioProcessor::JdrummerAudioProcessor()
             }
         }
     }
-    
+
     if (groovesPath.exists())
     {
         grooveManager.setGroovesPath(groovesPath);
@@ -261,14 +261,14 @@ double JdrummerAudioProcessor::getTailLengthSeconds() const
 int JdrummerAudioProcessor::getNumPrograms() { return 1; }
 int JdrummerAudioProcessor::getCurrentProgram() { return 0; }
 void JdrummerAudioProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
-const juce::String JdrummerAudioProcessor::getProgramName(int index) 
-{ 
-    juce::ignoreUnused(index); 
-    return {}; 
+const juce::String JdrummerAudioProcessor::getProgramName(int index)
+{
+    juce::ignoreUnused(index);
+    return {};
 }
-void JdrummerAudioProcessor::changeProgramName(int index, const juce::String& newName) 
-{ 
-    juce::ignoreUnused(index, newName); 
+void JdrummerAudioProcessor::changeProgramName(int index, const juce::String& newName)
+{
+    juce::ignoreUnused(index, newName);
 }
 
 /*
@@ -276,7 +276,7 @@ void JdrummerAudioProcessor::changeProgramName(int index, const juce::String& ne
     ---------------
     Called by the host before audio processing starts.
     This is where you allocate resources and configure for the session.
-    
+
     Parameters:
     - sampleRate: samples per second (e.g., 44100, 48000, 96000)
     - samplesPerBlock: maximum buffer size we'll receive
@@ -285,23 +285,23 @@ void JdrummerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 {
     // Tell the soundfont engine what sample rate to use
     soundFontManager.setSampleRate(sampleRate);
-    
+
     // Tell the groove manager about the sample rate
     grooveManager.setSampleRate(sampleRate);
-    
+
     // Store host sample rate for audio preview resampling
     hostSampleRate = sampleRate;
-    
+
     // Pre-allocate buffer for stereo audio (2 channels)
     // static_cast<size_t> converts int to size_t (unsigned) - required by vector
     renderBuffer.resize(static_cast<size_t>(samplesPerBlock) * 2);
-    
+
     // Pre-allocate multi-out buffers for each output group
     for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
     {
         multiOutBuffers[i].resize(static_cast<size_t>(samplesPerBlock) * 2);
     }
-    
+
     // Setup note-to-group mapper for multi-out routing
     soundFontManager.setNoteToGroupMapper([](int note) {
         return getOutputGroupForNote(note);
@@ -325,7 +325,7 @@ bool JdrummerAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
     // Main output must be stereo
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
-    
+
     // Individual outputs can be stereo or disabled
     for (int i = 1; i < layouts.outputBuses.size(); ++i)
     {
@@ -371,11 +371,11 @@ int JdrummerAudioProcessor::getOutputGroupForNote(int midiNote)
     PROCESS BLOCK - THE HEART OF THE PLUGIN
     ----------------------------------------
     This is called repeatedly by the host to process audio.
-    
+
     Parameters:
     - buffer: The audio buffer to fill with our output
     - midiMessages: MIDI events that occurred during this block
-    
+
     CRITICAL: This runs on the AUDIO THREAD, not the UI thread!
     Must be fast, lock-free, and never block.
 */
@@ -390,7 +390,7 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         JUCE handles enabling/disabling automatically.
     */
     juce::ScopedNoDenormals noDenormals;
-    
+
     /*
         DEFENSIVE BOUNDS CHECKING
         -------------------------
@@ -400,11 +400,11 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     */
     const int bufferNumChannels = buffer.getNumChannels();
     const int bufferNumSamples = buffer.getNumSamples();
-    
+
     // Must have at least stereo output for main mix
     if (bufferNumChannels < 2 || bufferNumSamples <= 0)
         return;
-    
+
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
@@ -424,14 +424,14 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         {
             if (auto bpm = position->getBpm())
                 currentBPM = *bpm;
-            
+
             if (auto ppq = position->getPpqPosition())
                 currentPPQ = *ppq;
-            
+
             hostIsPlaying = position->getIsPlaying();
         }
     }
-    
+
     /*
         PROCESS GROOVE PLAYBACK
         -----------------------
@@ -440,7 +440,7 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     */
     std::vector<juce::MidiMessage> grooveMidiEvents;
     grooveManager.processBlock(currentBPM, currentPPQ, hostIsPlaying, buffer.getNumSamples(), grooveMidiEvents);
-    
+
     // Trigger notes from groove playback (both main and individual outputs)
     for (const auto& msg : grooveMidiEvents)
     {
@@ -448,17 +448,17 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         {
             int note = msg.getNoteNumber();
             float velocity = msg.getFloatVelocity();
-            
+
             // Trigger on main output
             soundFontManager.noteOn(note, velocity);
-            
+
             // Trigger on individual output group for multi-out
             int groupIndex = getOutputGroupForNote(note);
             if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
             {
                 soundFontManager.noteOnToGroup(note, velocity, groupIndex);
             }
-            
+
             // Track for UI visualization
             {
                 juce::ScopedLock sl(triggeredNotesLock);
@@ -469,7 +469,7 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         {
             int note = msg.getNoteNumber();
             soundFontManager.noteOff(note);
-            
+
             // Also release on individual output group
             int groupIndex = getOutputGroupForNote(note);
             if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
@@ -484,29 +484,29 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         ---------------------
         MIDI messages have a timestamp within the buffer, but for simplicity
         we process them all at the start of the buffer.
-        
+
         In a more advanced implementation, you'd process them at their
         exact sample position for sample-accurate timing.
     */
     for (const auto metadata : midiMessages)
     {
         auto message = metadata.getMessage();
-        
+
         if (message.isNoteOn())
         {
             float velocity = message.getFloatVelocity();  // 0.0 to 1.0
             int note = message.getNoteNumber();           // 0 to 127
-            
+
             // Trigger the drum sound on main output
             soundFontManager.noteOn(note, velocity);
-            
+
             // Trigger on individual output group for multi-out
             int groupIndex = getOutputGroupForNote(note);
             if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
             {
                 soundFontManager.noteOnToGroup(note, velocity, groupIndex);
             }
-            
+
             /*
                 THREAD-SAFE ACCESS
                 ------------------
@@ -522,7 +522,7 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         {
             int note = message.getNoteNumber();
             soundFontManager.noteOff(note);
-            
+
             // Also release on individual output group
             int groupIndex = getOutputGroupForNote(note);
             if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
@@ -531,21 +531,21 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             }
         }
     }
-    
+
     // Get number of samples to process
     int numSamples = buffer.getNumSamples();
-    
+
     // Ensure our render buffer is large enough
     if (renderBuffer.size() < static_cast<size_t>(numSamples) * 2)
         renderBuffer.resize(static_cast<size_t>(numSamples) * 2);
-    
+
     // Ensure multi-out buffers are large enough
     for (int i = 0; i < NUM_OUTPUT_GROUPS; ++i)
     {
         if (multiOutBuffers[i].size() < static_cast<size_t>(numSamples) * 2)
             multiOutBuffers[i].resize(static_cast<size_t>(numSamples) * 2);
     }
-    
+
     /*
         RENDER AUDIO (MULTI-OUT)
         ------------------------
@@ -556,9 +556,9 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     {
         groupBufferPtrs[i] = multiOutBuffers[i].data();
     }
-    
+
     soundFontManager.renderAudioMultiOut(renderBuffer.data(), groupBufferPtrs, numSamples);
-    
+
     /*
         DEINTERLEAVE - MAIN OUTPUT (Bus 0)
         ----------------------------------
@@ -566,25 +566,25 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     */
     auto* leftChannel = buffer.getWritePointer(0);
     auto* rightChannel = buffer.getWritePointer(1);
-    
+
     for (int i = 0; i < numSamples; ++i)
     {
         leftChannel[i] = renderBuffer[static_cast<size_t>(i) * 2];      // Even indices
         rightChannel[i] = renderBuffer[static_cast<size_t>(i) * 2 + 1]; // Odd indices
     }
-    
+
     /*
         COPY TO INDIVIDUAL OUTPUT BUSES (Buses 1-16)
         --------------------------------------------
         Each output group goes to its own stereo bus for DAW mixing.
-        
+
         NOTE: Some DAWs may not provide all channels we expect.
         Use bufferNumChannels for bounds checking to prevent crashes.
     */
     for (int group = 0; group < NUM_OUTPUT_GROUPS; ++group)
     {
         int busIndex = group + 1;  // Bus 0 is main, buses 1-16 are individual outputs
-        
+
         if (busIndex < getBusCount(false))  // Check if bus exists
         {
             auto* bus = getBus(false, busIndex);
@@ -592,13 +592,13 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             {
                 // Get the channel indices for this bus in the main buffer
                 int startChannel = getChannelIndexInProcessBlockBuffer(false, busIndex, 0);
-                
+
                 // Extra bounds check: ensure channels exist in buffer before accessing
                 if (startChannel >= 0 && startChannel + 1 < bufferNumChannels)
                 {
                     auto* busLeft = buffer.getWritePointer(startChannel);
                     auto* busRight = buffer.getWritePointer(startChannel + 1);
-                    
+
                     for (int i = 0; i < numSamples; ++i)
                     {
                         busLeft[i] = multiOutBuffers[group][static_cast<size_t>(i) * 2];
@@ -608,7 +608,7 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             }
         }
     }
-    
+
     // Mix in preview audio if playing (with sample rate conversion)
     {
         juce::ScopedLock sl(previewLock);
@@ -616,19 +616,19 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         {
             int previewSamples = previewBuffer->getNumSamples();
             const float* previewData = previewBuffer->getReadPointer(0);
-            
+
             // Calculate the playback rate ratio for sample rate conversion
             // If audio is 44100 Hz and DAW is 48000 Hz, we need to advance slower
             // to maintain correct pitch
             double playbackRatio = previewSampleRate / hostSampleRate;
-            
+
             for (int i = 0; i < numSamples; ++i)
             {
                 // Get the integer and fractional parts of the position
                 int pos0 = static_cast<int>(previewPosition);
                 int pos1 = pos0 + 1;
                 double frac = previewPosition - static_cast<double>(pos0);
-                
+
                 // Handle looping - sync groove with audio loop
                 if (pos0 >= previewSamples)
                 {
@@ -636,7 +636,7 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                     pos0 = 0;
                     pos1 = 1;
                     frac = 0.0;
-                    
+
                     // Reset groove playback to stay in sync with audio
                     grooveManager.resetPlaybackPosition();
                 }
@@ -644,15 +644,15 @@ void JdrummerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 {
                     pos1 = 0;  // Wrap for interpolation
                 }
-                
+
                 // Linear interpolation between samples for smooth resampling
                 float sample0 = previewData[pos0];
                 float sample1 = previewData[pos1];
                 float sample = static_cast<float>(sample0 + (sample1 - sample0) * frac);
-                
+
                 leftChannel[i] += sample * 0.7f;  // Mix at 70% volume
                 rightChannel[i] += sample * 0.7f;
-                
+
                 // Advance position by the playback ratio
                 previewPosition += playbackRatio;
             }
@@ -670,10 +670,10 @@ bool JdrummerAudioProcessor::hasEditor() const
     CREATE EDITOR
     -------------
     Creates and returns the plugin's UI.
-    
+
     Returns a raw pointer (not smart pointer) because JUCE manages
     the editor's lifetime - it will delete it when done.
-    
+
     'new' allocates memory on the heap and constructs the object.
     '*this' passes a reference to this processor to the editor.
 */
@@ -693,12 +693,12 @@ void JdrummerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     // Create a tree structure to hold our state
     juce::ValueTree state("JdrummerState");
-    
+
     // setProperty adds key-value pairs to the tree
     // nullptr is the UndoManager - we don't need undo for state saving
     state.setProperty("currentKit", soundFontManager.getCurrentKitName(), nullptr);
     state.setProperty("soundFontsPath", soundFontManager.getSoundFontsPath().getFullPathName(), nullptr);
-    
+
     // Create a child tree for per-note settings
     juce::ValueTree noteSettings("NoteSettings");
     for (int note = 35; note <= 81; ++note)
@@ -710,13 +710,13 @@ void JdrummerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
         noteSettings.appendChild(noteSetting, nullptr);
     }
     state.appendChild(noteSettings, nullptr);
-    
+
     /*
         SMART POINTERS
         --------------
         std::unique_ptr is a "smart pointer" that automatically deletes
         its object when it goes out of scope. No manual delete needed!
-        
+
         This prevents memory leaks - a common bug in C++.
     */
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
@@ -727,12 +727,12 @@ void JdrummerAudioProcessor::setStateInformation(const void* data, int sizeInByt
 {
     // Parse the binary data back into XML
     std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
-    
+
     if (xml != nullptr)
     {
         // Convert XML to ValueTree
         juce::ValueTree state = juce::ValueTree::fromXml(*xml);
-        
+
         if (state.isValid())
         {
             // Restore soundfonts path
@@ -745,14 +745,14 @@ void JdrummerAudioProcessor::setStateInformation(const void* data, int sizeInByt
                     soundFontManager.setSoundFontsPath(path);
                 }
             }
-            
+
             // Restore kit selection
             juce::String kitName = state.getProperty("currentKit", "");
             if (kitName.isNotEmpty())
             {
                 soundFontManager.loadKit(kitName);
             }
-            
+
             // Restore per-note settings
             auto noteSettings = state.getChildWithName("NoteSettings");
             if (noteSettings.isValid())
@@ -763,12 +763,12 @@ void JdrummerAudioProcessor::setStateInformation(const void* data, int sizeInByt
                     int note = noteSetting.getProperty("number", 0);
                     float volume = noteSetting.getProperty("volume", 0.5f);  // Default 50%
                     float pan = noteSetting.getProperty("pan", 0.0f);
-                    
+
                     soundFontManager.setNoteVolume(note, volume);
                     soundFontManager.setNotePan(note, pan);
                 }
             }
-            
+
             // Notify listeners that state was restored
             if (onKitLoaded)
                 onKitLoaded();
@@ -781,7 +781,7 @@ void JdrummerAudioProcessor::triggerNote(int note, float velocity)
 {
     // Trigger on main output
     soundFontManager.noteOn(note, velocity);
-    
+
     // Trigger on individual output group for multi-out
     int groupIndex = getOutputGroupForNote(note);
     if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
@@ -794,7 +794,7 @@ void JdrummerAudioProcessor::releaseNote(int note)
 {
     // Release on main output
     soundFontManager.noteOff(note);
-    
+
     // Release on individual output group
     int groupIndex = getOutputGroupForNote(note);
     if (groupIndex >= 0 && groupIndex < NUM_OUTPUT_GROUPS)
@@ -807,7 +807,7 @@ void JdrummerAudioProcessor::releaseNote(int note)
     GET AND CLEAR TRIGGERED NOTES
     -----------------------------
     Thread-safe method to get notes that were triggered since last check.
-    
+
     std::move transfers ownership of the vector's contents without copying.
     This is more efficient than copying the entire vector.
 */
@@ -854,7 +854,7 @@ void JdrummerAudioProcessor::stopPreviewPlayback()
     -----------------------
     This function is called by the DAW/host to create an instance of our plugin.
     It's the entry point - how the host discovers and instantiates our plugin.
-    
+
     JUCE_CALLTYPE ensures the correct calling convention for the platform.
 */
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
