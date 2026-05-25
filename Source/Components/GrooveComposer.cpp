@@ -6,12 +6,13 @@
 */
 
 #include "GrooveComposer.h"
+#include "../DrumInstrumentMap.h"
 
 GrooveComposer::GrooveComposer()
 {
     // Title label
     titleLabel.setText("COMPOSER", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(12.0f, juce::Font::bold));
+    titleLabel.setFont(juce::Font(10.0f, juce::Font::bold));
     titleLabel.setColour(juce::Label::textColourId, textColour);
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);
@@ -52,32 +53,59 @@ GrooveComposer::GrooveComposer()
     };
     addAndMakeVisible(clearButton);
     
-    // Export button - exports MIDI and opens folder (for Bitwig compatibility)
+    // Export button - save composition to user-chosen path
     exportButton.setButtonText("Export MIDI");
     exportButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A6A3A));
     exportButton.setColour(juce::TextButton::textColourOffId, textColour);
     exportButton.onClick = [this]() {
         if (grooveManager == nullptr)
             return;
-        
+
         const auto& items = grooveManager->getComposerItems();
         if (items.empty())
         {
             DBG("GrooveComposer: No items to export");
             return;
         }
-        
-        // Export the composition
-        juce::File exportedFile = grooveManager->exportCompositionToTempFile();
-        
-        if (exportedFile.existsAsFile())
-        {
-            // Open the containing folder and select the file
-            exportedFile.revealToUser();
-            DBG("GrooveComposer: Exported and revealed: " + exportedFile.getFullPathName());
-        }
+
+#if JUCE_LINUX
+        constexpr bool useNativeDialog = false;
+#else
+        constexpr bool useNativeDialog = true;
+#endif
+
+        exportFileChooser = std::make_unique<juce::FileChooser>(
+            "Export MIDI composition",
+            juce::File::getSpecialLocation(juce::File::userMusicDirectory)
+                .getChildFile("jdrummer_composition.mid"),
+            "*.mid",
+            useNativeDialog);
+
+        auto flags = juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles;
+
+        exportFileChooser->launchAsync(flags,
+            [this](const juce::FileChooser& fc) {
+                if (grooveManager == nullptr)
+                    return;
+
+                auto results = fc.getResults();
+                if (results.isEmpty())
+                    return;
+
+                juce::File destination = results[0];
+                if (!destination.hasFileExtension("mid"))
+                    destination = destination.withFileExtension("mid");
+
+                if (grooveManager->exportCompositionToFile(destination))
+                    DBG("GrooveComposer: Exported to " + destination.getFullPathName());
+            });
     };
     addAndMakeVisible(exportButton);
+
+    addAndMakeVisible(instrumentStrip);
+    instrumentStrip.onInstrumentsChanged = [this]() {
+        repaint();
+    };
 }
 
 GrooveComposer::~GrooveComposer()
@@ -110,9 +138,10 @@ void GrooveComposer::paint(juce::Graphics& g)
     
     // Draw timeline area
     auto bounds = getLocalBounds().reduced(10);
-    bounds.removeFromTop(25);  // Title area
-    bounds.removeFromLeft(50);  // Play button area
-    bounds.removeFromRight(60);  // Clear button area
+    bounds.removeFromTop(titleRowHeight);
+    bounds.removeFromTop(instrumentStripHeight);
+    bounds.removeFromLeft(46);
+    bounds.removeFromRight(56);
     
     // Timeline background
     g.setColour(juce::Colour(0xFF252525));
@@ -148,7 +177,8 @@ void GrooveComposer::paint(juce::Graphics& g)
                 
                 // Item background
                 juce::Colour itemBg = itemColour;
-                if (static_cast<int>(i) == selectedItemIndex)
+                const int selectedIndex = grooveManager->getSelectedComposerItem();
+                if (rect.composerIndex == selectedIndex)
                     itemBg = selectedItemColour;
                 else if (static_cast<int>(i) == hoveredItemIndex)
                     itemBg = itemColour.brighter(0.2f);
@@ -156,54 +186,44 @@ void GrooveComposer::paint(juce::Graphics& g)
                 g.setColour(itemBg);
                 g.fillRoundedRectangle(rect.bounds.toFloat(), 3.0f);
                 
-                // Draw MIDI notes as mini piano-roll visualization
-                if (groove->isLoaded && !groove->events.empty() && groove->lengthInBeats > 0)
+                const auto& effectiveEvents = grooveManager->getEffectiveEventsForItem(rect.composerIndex);
+
+                if (!effectiveEvents.empty() && item.lengthInBeats > 0)
                 {
                     // Tighter drum range for better vertical spread (most drums are 35-57)
-                    const int minNote = 35;   // Kick drum
-                    const int maxNote = 57;   // Crash cymbal 2
+                    const int minNote = 35;
+                    const int maxNote = 57;
                     const float noteRange = static_cast<float>(maxNote - minNote);
                     
-                    // Calculate drawable area inside the item (with small padding)
-                    auto noteArea = rect.bounds.reduced(2, 14);  // More top padding for label
+                    auto noteArea = rect.bounds.reduced(2, 12);
                     
-                    // Calculate position within this groove for highlighting
                     double posInGroove = -1.0;
                     if (isPlayingBack)
                     {
                         posInGroove = playbackPos - item.startBeat;
-                        // Handle looping - wrap position within selected bar range
                         if (posInGroove >= item.lengthInBeats)
-                            posInGroove = -1.0;  // Past this item
+                            posInGroove = -1.0;
                     }
                     
-                    for (const auto& event : groove->events)
+                    for (const auto& event : effectiveEvents)
                     {
                         if (event.message.isNoteOn())
                         {
                             int note = event.message.getNoteNumber();
                             float velocity = event.message.getFloatVelocity();
-                            
-                            // Clamp notes to display range (don't skip, just clamp position)
                             int displayNote = juce::jlimit(minNote, maxNote, note);
                             
-                            // Skip notes that are past the selected bar length
                             if (event.timeInBeats >= item.lengthInBeats)
                                 continue;
                             
-                            // X: map timeInBeats to item width (use item.lengthInBeats for selected bar range)
                             float xRatio = static_cast<float>(event.timeInBeats / item.lengthInBeats);
                             float x = noteArea.getX() + xRatio * noteArea.getWidth();
-                            
-                            // Y: map note number to item height (higher notes at top)
                             float yRatio = 1.0f - (static_cast<float>(displayNote - minNote) / noteRange);
                             float y = noteArea.getY() + yRatio * (noteArea.getHeight() - 4);
                             
-                            // Note size - width based on velocity, fixed height
                             float noteWidth = 2.0f + velocity * 2.0f;
                             float noteHeight = 2.0f;
                             
-                            // Check if this note is currently being played (within 0.15 beats of playhead)
                             bool noteIsPlaying = false;
                             if (posInGroove >= 0)
                             {
@@ -212,31 +232,15 @@ void GrooveComposer::paint(juce::Graphics& g)
                                     noteIsPlaying = true;
                             }
                             
-                            // Color based on note type with velocity-based brightness
-                            juce::Colour noteColour;
-                            if (note == 36 || note == 35)  // Kick drums
-                                noteColour = juce::Colour(0xFFFF6B6B);  // Red
-                            else if (note == 38 || note == 40)  // Snare drums
-                                noteColour = juce::Colour(0xFF4ECDC4);  // Teal
-                            else if (note >= 42 && note <= 46)  // Hi-hats
-                                noteColour = juce::Colour(0xFFFFE66D);  // Yellow
-                            else if (note >= 49 && note <= 57)  // Cymbals
-                                noteColour = juce::Colour(0xFFFF9F43);  // Orange
-                            else if (note >= 47 && note <= 48)  // Toms
-                                noteColour = juce::Colour(0xFFA29BFE);  // Purple
-                            else
-                                noteColour = juce::Colour(0xFFDFE6E9);  // Light gray
-                            
-                            // Apply velocity-based alpha
+                            juce::Colour noteColour = getNoteColour(note);
                             noteColour = noteColour.withAlpha(0.6f + velocity * 0.4f);
                             
-                            // Highlight notes being played - make them brighter and larger
                             if (noteIsPlaying)
                             {
                                 noteColour = juce::Colours::white;
                                 noteWidth *= 2.0f;
                                 noteHeight = 4.0f;
-                                y -= 1.0f;  // Center the larger note
+                                y -= 1.0f;
                             }
                             
                             g.setColour(noteColour);
@@ -244,7 +248,6 @@ void GrooveComposer::paint(juce::Graphics& g)
                         }
                     }
                     
-                    // Draw playhead line if playing within this groove
                     if (posInGroove >= 0 && posInGroove < item.lengthInBeats)
                     {
                         float xRatio = static_cast<float>(posInGroove / item.lengthInBeats);
@@ -288,22 +291,22 @@ void GrooveComposer::resized()
     auto bounds = getLocalBounds().reduced(10);
     
     // Title at top left
-    auto topRow = bounds.removeFromTop(25);
-    titleLabel.setBounds(topRow.removeFromLeft(85));
+    auto topRow = bounds.removeFromTop(titleRowHeight);
+    titleLabel.setBounds(topRow.removeFromLeft(80));
     
-    // Export MIDI button
-    topRow.removeFromLeft(5);
-    exportButton.setBounds(topRow.removeFromLeft(80));
+    topRow.removeFromLeft(4);
+    exportButton.setBounds(topRow.removeFromLeft(72));
+
+    auto stripRow = bounds.removeFromTop(instrumentStripHeight);
+    instrumentStrip.setBounds(stripRow);
     
-    // Play button on the left
-    auto leftArea = bounds.removeFromLeft(45);
-    playButton.setBounds(leftArea.withSizeKeepingCentre(40, 25));
-    bounds.removeFromLeft(5);
+    auto leftArea = bounds.removeFromLeft(42);
+    playButton.setBounds(leftArea.withSizeKeepingCentre(38, 22));
+    bounds.removeFromLeft(4);
     
-    // Clear button on the right
-    auto rightArea = bounds.removeFromRight(55);
-    clearButton.setBounds(rightArea.withSizeKeepingCentre(50, 25));
-    bounds.removeFromRight(5);
+    auto rightArea = bounds.removeFromRight(52);
+    clearButton.setBounds(rightArea.withSizeKeepingCentre(48, 22));
+    bounds.removeFromRight(4);
     
     // Hint label centered in remaining area
     hintLabel.setBounds(bounds);
@@ -314,11 +317,13 @@ void GrooveComposer::resized()
 void GrooveComposer::setGrooveManager(GrooveManager* manager)
 {
     grooveManager = manager;
+    instrumentStrip.setGrooveManager(manager);
     refresh();
 }
 
 void GrooveComposer::refresh()
 {
+    instrumentStrip.refresh();
     updateItemRects();
     repaint();
 }
@@ -350,9 +355,10 @@ void GrooveComposer::updateItemRects()
     
     // Calculate the timeline bounds
     auto bounds = getLocalBounds().reduced(10);
-    bounds.removeFromTop(25);
-    bounds.removeFromLeft(50);
-    bounds.removeFromRight(60);
+    bounds.removeFromTop(titleRowHeight);
+    bounds.removeFromTop(instrumentStripHeight);
+    bounds.removeFromLeft(46);
+    bounds.removeFromRight(56);
     bounds = bounds.reduced(4);
     
     // Calculate total length
@@ -405,7 +411,6 @@ void GrooveComposer::mouseDown(const juce::MouseEvent& e)
         if (grooveManager != nullptr)
         {
             grooveManager->removeFromComposer(clickedItem);
-            selectedItemIndex = -1;
             refresh();
             
             if (onCompositionChanged)
@@ -414,7 +419,10 @@ void GrooveComposer::mouseDown(const juce::MouseEvent& e)
     }
     else
     {
-        selectedItemIndex = clickedItem;
+        if (grooveManager != nullptr)
+            grooveManager->setSelectedComposerItem(clickedItem);
+
+        instrumentStrip.refresh();
         repaint();
     }
 }

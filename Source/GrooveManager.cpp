@@ -6,6 +6,26 @@
 */
 
 #include "GrooveManager.h"
+#include "GroovePatternDensity.h"
+
+namespace
+{
+    std::vector<Groove::MidiEvent> copyOriginalEvents(const Groove& groove, double lengthInBeats)
+    {
+        std::vector<Groove::MidiEvent> result;
+
+        for (const auto& evt : groove.events)
+        {
+            if (evt.timeInBeats >= lengthInBeats)
+                continue;
+
+            if (evt.message.isNoteOnOrOff())
+                result.push_back(evt);
+        }
+
+        return result;
+    }
+}
 
 GrooveManager::GrooveManager()
 {
@@ -468,8 +488,9 @@ void GrooveManager::processBlock(double bpm, double ppqPosition, bool hostIsPlay
         }
         
         // Process each composer item
-        for (const auto& item : composerItems)
+        for (size_t itemIndex = 0; itemIndex < composerItems.size(); ++itemIndex)
         {
+            const auto& item = composerItems[itemIndex];
             const Groove* groove = getGroove(item.grooveCategoryIndex, item.grooveIndex);
             if (groove == nullptr || !groove->isLoaded)
                 continue;
@@ -484,15 +505,29 @@ void GrooveManager::processBlock(double bpm, double ppqPosition, bool hostIsPlay
                 if (lastPosInGroove < 0)
                     lastPosInGroove = 0;
                 
-                for (const auto& evt : groove->events)
+                const auto& events = getEffectiveEventsForItemUnlocked(static_cast<int>(itemIndex));
+
+                for (const auto& evt : events)
                 {
-                    // Only trigger events within the item's length (respects bar count)
-                    if (evt.timeInBeats < item.lengthInBeats &&
-                        evt.timeInBeats > lastPosInGroove && 
-                        evt.timeInBeats <= positionInGroove)
+                    if (evt.timeInBeats >= item.lengthInBeats)
+                        continue;
+
+                    bool shouldTrigger = false;
+
+                    if (positionInGroove >= lastPosInGroove)
                     {
-                        midiOut.push_back(evt.message);
+                        shouldTrigger = (evt.timeInBeats > lastPosInGroove &&
+                                         evt.timeInBeats <= positionInGroove);
                     }
+                    else
+                    {
+                        // Loop wrapped within this item
+                        shouldTrigger = (evt.timeInBeats > lastPosInGroove ||
+                                         evt.timeInBeats <= positionInGroove);
+                    }
+
+                    if (shouldTrigger)
+                        midiOut.push_back(evt.message);
                 }
             }
         }
@@ -537,6 +572,8 @@ void GrooveManager::addToComposer(int categoryIndex, int grooveIndex, int barCou
     }
     
     composerItems.push_back(item);
+    selectedComposerItemIndex = static_cast<int>(composerItems.size()) - 1;
+    rebuildEffectiveEventsNow(selectedComposerItemIndex);
     
     DBG("GrooveManager: Added " + juce::String(barCount) + " bars of groove to composer. "
         + "Length: " + juce::String(item.lengthInBeats) + " beats. "
@@ -553,6 +590,11 @@ void GrooveManager::removeFromComposer(int index)
     double removedLength = composerItems[index].lengthInBeats;
     composerItems.erase(composerItems.begin() + index);
     
+    if (selectedComposerItemIndex == index)
+        selectedComposerItemIndex = -1;
+    else if (selectedComposerItemIndex > index)
+        --selectedComposerItemIndex;
+    
     // Adjust start times for items after the removed one
     for (size_t i = index; i < composerItems.size(); ++i)
     {
@@ -565,6 +607,7 @@ void GrooveManager::clearComposer()
     juce::ScopedLock sl(lock);
     composerItems.clear();
     composerPlaying = false;
+    selectedComposerItemIndex = -1;
 }
 
 void GrooveManager::moveComposerItem(int fromIndex, int toIndex)
@@ -608,10 +651,13 @@ void GrooveManager::startComposerPlayback()
     if (composerItems.empty())
         return;
     
-    // Make sure all grooves are loaded
-    for (const auto& item : composerItems)
+    // Make sure all grooves are loaded and effective events are built
+    for (size_t i = 0; i < composerItems.size(); ++i)
     {
-        loadGroove(item.grooveCategoryIndex, item.grooveIndex);
+        loadGroove(composerItems[i].grooveCategoryIndex, composerItems[i].grooveIndex);
+
+        if (composerItems[i].instrumentSettingsModified)
+            rebuildEffectiveEventsNow(static_cast<int>(i));
     }
     
     composerPlaying = true;
@@ -663,117 +709,282 @@ juce::File GrooveManager::exportGrooveToTempFile(int categoryIndex, int grooveIn
     }
 }
 
-juce::File GrooveManager::exportCompositionToTempFile()
+juce::MidiFile GrooveManager::buildCompositionMidiFile() const
 {
-    juce::ScopedLock sl(lock);
-    
+    juce::MidiFile midiFile;
+
     if (composerItems.empty())
-        return juce::File();
-    
-    // Calculate total length first
+        return midiFile;
+
     double totalLengthInBeats = 0.0;
     for (const auto& item : composerItems)
-    {
         totalLengthInBeats += item.lengthInBeats;
-    }
-    
-    // Create a new MIDI file - Format Type 0 (single track) for maximum compatibility
-    juce::MidiFile midiFile;
-    midiFile.setTicksPerQuarterNote(480);  // Standard resolution
-    
+
+    midiFile.setTicksPerQuarterNote(480);
+
     juce::MidiMessageSequence sequence;
-    
-    // Add track name meta event (helps some DAWs identify the track)
+
     juce::MidiMessage trackName = juce::MidiMessage::textMetaEvent(3, "JDrummer Composition");
     trackName.setTimeStamp(0);
     sequence.addEvent(trackName);
-    
-    // Add tempo (120 BPM = 500000 microseconds per beat)
+
     auto tempoEvent = juce::MidiMessage::tempoMetaEvent(500000);
     tempoEvent.setTimeStamp(0);
     sequence.addEvent(tempoEvent);
-    
-    // Add time signature (4/4)
+
     auto timeSigEvent = juce::MidiMessage::timeSignatureMetaEvent(4, 4);
     timeSigEvent.setTimeStamp(0);
     sequence.addEvent(timeSigEvent);
-    
-    // Add all groove events with adjusted timing
-    for (const auto& item : composerItems)
+
+    for (size_t itemIndex = 0; itemIndex < composerItems.size(); ++itemIndex)
     {
-        const Groove* groove = getGroove(item.grooveCategoryIndex, item.grooveIndex);
-        if (groove == nullptr || !groove->isLoaded)
-            continue;
-        
-        for (const auto& evt : groove->events)
+        const auto& item = composerItems[itemIndex];
+        const auto& events = getEffectiveEventsForItemUnlocked(static_cast<int>(itemIndex));
+
+        for (const auto& evt : events)
         {
-            // Only include events within the ITEM's length (respects bar count)
             if (evt.timeInBeats < item.lengthInBeats)
             {
                 juce::MidiMessage msg = evt.message;
-                // Convert beats to ticks (480 ticks per beat)
                 double ticks = (item.startBeat + evt.timeInBeats) * 480.0;
                 msg.setTimeStamp(ticks);
                 sequence.addEvent(msg);
             }
         }
     }
-    
-    // Ensure all note-on events have matching note-off events
+
     sequence.updateMatchedPairs();
-    
-    // Sort events by timestamp
     sequence.sort();
-    
-    // Add end-of-track meta event at the very end
-    // This is REQUIRED by MIDI spec and some DAWs (like Bitwig) are strict about it
+
     auto endOfTrack = juce::MidiMessage::endOfTrack();
     endOfTrack.setTimeStamp(totalLengthInBeats * 480.0);
     sequence.addEvent(endOfTrack);
-    
+
     midiFile.addTrack(sequence);
-    
-    // Write to export file (persistent directory for DAW compatibility)
-    juce::File outFile = tempDir.getChildFile("jdrummer_composition_" 
-        + juce::String(juce::Time::currentTimeMillis()) + ".mid");
-    
-    // Delete any existing file first
-    if (outFile.existsAsFile())
-        outFile.deleteFile();
-    
+    return midiFile;
+}
+
+bool GrooveManager::writeMidiFile(const juce::MidiFile& midiFile, const juce::File& destination) const
+{
+    if (destination.existsAsFile())
+        destination.deleteFile();
+
+    juce::FileOutputStream stream(destination);
+    if (!stream.openedOk())
     {
-        juce::FileOutputStream stream(outFile);
-        if (stream.openedOk())
-        {
-            bool writeSuccess = midiFile.writeTo(stream);
-            stream.flush();
-            
-            if (writeSuccess)
-            {
-                DBG("GrooveManager: Exported composition to " + outFile.getFullPathName() 
-                    + " (" + juce::String(outFile.getSize()) + " bytes)");
-            }
-            else
-            {
-                DBG("GrooveManager: Failed to write MIDI data");
-                return juce::File();
-            }
-        }
-        else
-        {
-            DBG("GrooveManager: Failed to open output file");
-            return juce::File();
-        }
-    }  // FileOutputStream closes here, ensuring file is fully written
-    
-    // Verify the file was written correctly
-    if (outFile.existsAsFile() && outFile.getSize() > 0)
-    {
-        return outFile;
+        DBG("GrooveManager: Failed to open output file");
+        return false;
     }
-    
+
+    const bool writeSuccess = midiFile.writeTo(stream);
+    stream.flush();
+
+    if (!writeSuccess)
+    {
+        DBG("GrooveManager: Failed to write MIDI data");
+        return false;
+    }
+
+    if (destination.existsAsFile() && destination.getSize() > 0)
+    {
+        DBG("GrooveManager: Exported composition to " + destination.getFullPathName()
+            + " (" + juce::String(destination.getSize()) + " bytes)");
+        return true;
+    }
+
     DBG("GrooveManager: Export verification failed");
-    return juce::File();
+    return false;
+}
+
+bool GrooveManager::exportCompositionToFile(const juce::File& destination)
+{
+    juce::ScopedLock sl(lock);
+
+    if (composerItems.empty() || !destination.getFullPathName().isNotEmpty())
+        return false;
+
+    return writeMidiFile(buildCompositionMidiFile(), destination);
+}
+
+juce::File GrooveManager::exportCompositionToTempFile()
+{
+    juce::ScopedLock sl(lock);
+
+    if (composerItems.empty())
+        return juce::File();
+
+    juce::File outFile = tempDir.getChildFile("jdrummer_composition_"
+        + juce::String(juce::Time::currentTimeMillis()) + ".mid");
+
+    if (!writeMidiFile(buildCompositionMidiFile(), outFile))
+        return juce::File();
+
+    return outFile;
+}
+
+void GrooveManager::setSelectedComposerItem(int index)
+{
+    juce::ScopedLock sl(lock);
+
+    if (index < -1 || index >= static_cast<int>(composerItems.size()))
+        return;
+
+    selectedComposerItemIndex = index;
+}
+
+void GrooveManager::resetComposerItemSettings(int itemIndex)
+{
+    juce::ScopedLock sl(lock);
+
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return;
+
+    auto& item = composerItems[static_cast<size_t>(itemIndex)];
+    item.instrumentSettingsModified = false;
+    item.enabledInstruments = 0;
+    item.rowDensity = { 0, 0, 0 };
+    rebuildEffectiveEventsNow(itemIndex);
+}
+
+void GrooveManager::setComposerItemInstrumentEnabled(int itemIndex, DrumInstrument inst, bool enabled)
+{
+    juce::ScopedLock sl(lock);
+
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return;
+
+    auto& item = composerItems[static_cast<size_t>(itemIndex)];
+    item.instrumentSettingsModified = true;
+    item.enabledInstruments = setInstrumentEnabled(inst, item.enabledInstruments, enabled);
+    rebuildEffectiveEventsNow(itemIndex);
+}
+
+void GrooveManager::setComposerRowDensity(int itemIndex, int rowIndex, uint8_t level)
+{
+    juce::ScopedLock sl(lock);
+
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return;
+    if (rowIndex < 0 || rowIndex >= 3)
+        return;
+
+    auto& item = composerItems[static_cast<size_t>(itemIndex)];
+    item.instrumentSettingsModified = true;
+    item.rowDensity[static_cast<size_t>(rowIndex)] =
+        static_cast<uint8_t>(juce::jlimit(0, kMaxDensityLevel, static_cast<int>(level)));
+    rebuildEffectiveEventsNow(itemIndex);
+}
+
+uint8_t GrooveManager::getComposerRowDensity(int itemIndex, int rowIndex) const
+{
+    juce::ScopedLock sl(lock);
+
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return kMaxDensityLevel;
+    if (rowIndex < 0 || rowIndex >= 3)
+        return kMaxDensityLevel;
+
+    return composerItems[static_cast<size_t>(itemIndex)].rowDensity[static_cast<size_t>(rowIndex)];
+}
+
+const std::vector<Groove::MidiEvent>& GrooveManager::getEffectiveEventsForItem(int itemIndex) const
+{
+    juce::ScopedLock sl(lock);
+    return getEffectiveEventsForItemUnlocked(itemIndex);
+}
+
+const std::vector<Groove::MidiEvent>& GrooveManager::getEffectiveEventsForItemUnlocked(int itemIndex) const
+{
+    static const std::vector<Groove::MidiEvent> empty;
+
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return empty;
+
+    auto& item = composerItems[static_cast<size_t>(itemIndex)];
+
+    if (!item.effectiveEventsDirty)
+        return item.effectiveEvents;
+
+    const Groove* groove = getGroove(item.grooveCategoryIndex, item.grooveIndex);
+    if (groove == nullptr || !groove->isLoaded)
+    {
+        item.effectiveEvents.clear();
+    }
+    else if (!item.instrumentSettingsModified)
+    {
+        item.effectiveEvents = copyOriginalEvents(*groove, item.lengthInBeats);
+    }
+    else
+    {
+        item.effectiveEvents = GroovePatternDensity::buildEffectiveEvents(
+            *groove, item.lengthInBeats, item.enabledInstruments, item.rowDensity);
+    }
+
+    item.effectiveEventsDirty = false;
+    return item.effectiveEvents;
+}
+
+void GrooveManager::rebuildEffectiveEventsNow(int itemIndex)
+{
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return;
+
+    auto& item = composerItems[static_cast<size_t>(itemIndex)];
+    const Groove* groove = getGroove(item.grooveCategoryIndex, item.grooveIndex);
+
+    if (groove == nullptr || !groove->isLoaded)
+    {
+        item.effectiveEvents.clear();
+    }
+    else if (!item.instrumentSettingsModified)
+    {
+        item.effectiveEvents = copyOriginalEvents(*groove, item.lengthInBeats);
+    }
+    else
+    {
+        item.effectiveEvents = GroovePatternDensity::buildEffectiveEvents(
+            *groove, item.lengthInBeats, item.enabledInstruments, item.rowDensity);
+    }
+
+    item.effectiveEventsDirty = false;
+}
+
+bool GrooveManager::isComposerItemModified(int itemIndex) const
+{
+    juce::ScopedLock sl(lock);
+
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return false;
+
+    return composerItems[static_cast<size_t>(itemIndex)].instrumentSettingsModified;
+}
+
+bool GrooveManager::isComposerItemInstrumentEnabled(int itemIndex, DrumInstrument inst) const
+{
+    juce::ScopedLock sl(lock);
+
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(composerItems.size()))
+        return true;
+
+    return isInstrumentEnabled(inst, composerItems[static_cast<size_t>(itemIndex)].enabledInstruments);
+}
+
+std::set<DrumInstrument> GrooveManager::getInstrumentsInGroove(int categoryIndex, int grooveIndex) const
+{
+    juce::ScopedLock sl(lock);
+
+    std::set<DrumInstrument> result;
+    const Groove* groove = getGroove(categoryIndex, grooveIndex);
+    if (groove == nullptr || !groove->isLoaded)
+        return result;
+
+    for (const auto& evt : groove->events)
+    {
+        if (evt.message.isNoteOn())
+            result.insert(instrumentForNote(evt.message.getNoteNumber()));
+    }
+
+    return result;
 }
 
 void GrooveManager::cleanupOldExports()

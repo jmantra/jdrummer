@@ -428,7 +428,7 @@ void BandmatePanel::resized()
     bounds.removeFromTop(8);
     
     // Split remaining space between content area and composer
-    auto contentArea = bounds.removeFromTop(bounds.getHeight() - 108);
+    auto contentArea = bounds.removeFromTop(bounds.getHeight() - 142);
     
     if (currentSubTab == 0)
     {

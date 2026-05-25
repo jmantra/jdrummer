@@ -13,6 +13,7 @@
 
 #include "../JuceHeader.h"
 #include "../GrooveManager.h"
+#include "GrooveInstrumentStrip.h"
 
 class GrooveComposer : public juce::Component,
                        public juce::DragAndDropTarget,
@@ -65,7 +66,12 @@ private:
     juce::Label hintLabel;
     juce::TextButton playButton;
     juce::TextButton clearButton;
-    juce::TextButton exportButton;  // Export and show in folder
+    juce::TextButton exportButton;
+    GrooveInstrumentStrip instrumentStrip;
+    std::unique_ptr<juce::FileChooser> exportFileChooser;
+    
+    static constexpr int titleRowHeight = 18;
+    static constexpr int instrumentStripHeight = 51;
     
     // Composer item display
     struct ItemRect
@@ -76,7 +82,6 @@ private:
     std::vector<ItemRect> itemRects;
     
     int hoveredItemIndex = -1;
-    int selectedItemIndex = -1;
     bool dragOver = false;
     bool isPlaying = false;
     bool isDraggingExternal = false;  // Prevent multiple drag starts

@@ -14,7 +14,10 @@
 #pragma once
 
 #include "JuceHeader.h"
+#include "DrumInstrumentMap.h"
+#include <array>
 #include <map>
+#include <set>
 #include <vector>
 
 /*
@@ -64,6 +67,11 @@ struct ComposerItem
     int grooveIndex;                // Which groove within category
     double startBeat;               // Where it starts in the composition
     double lengthInBeats;           // How long it lasts
+    uint8_t enabledInstruments = 0;
+    std::array<uint8_t, 3> rowDensity = { 0, 0, 0 };
+    bool instrumentSettingsModified = false;
+    mutable std::vector<Groove::MidiEvent> effectiveEvents;
+    mutable bool effectiveEventsDirty = true;
 };
 
 class GrooveManager
@@ -109,6 +117,20 @@ public:
     void moveComposerItem(int fromIndex, int toIndex);
     const std::vector<ComposerItem>& getComposerItems() const { return composerItems; }
     double getComposerLengthInBeats() const;
+
+    // Composer selection (shared across UI instances)
+    void setSelectedComposerItem(int index);
+    int getSelectedComposerItem() const { return selectedComposerItemIndex; }
+
+    // Per-item instrument toggles and row density
+    void setComposerItemInstrumentEnabled(int itemIndex, DrumInstrument inst, bool enabled);
+    bool isComposerItemInstrumentEnabled(int itemIndex, DrumInstrument inst) const;
+    void setComposerRowDensity(int itemIndex, int rowIndex, uint8_t level);
+    uint8_t getComposerRowDensity(int itemIndex, int rowIndex) const;
+    const std::vector<Groove::MidiEvent>& getEffectiveEventsForItem(int itemIndex) const;
+    bool isComposerItemModified(int itemIndex) const;
+    void resetComposerItemSettings(int itemIndex);
+    std::set<DrumInstrument> getInstrumentsInGroove(int categoryIndex, int grooveIndex) const;
     
     // Start/stop playing the composed sequence
     void startComposerPlayback();
@@ -122,6 +144,7 @@ public:
     // Export functions - create MIDI file for drag & drop
     juce::File exportGrooveToTempFile(int categoryIndex, int grooveIndex);
     juce::File exportCompositionToTempFile();
+    bool exportCompositionToFile(const juce::File& destination);
     
     // Set sample rate for timing calculations
     void setSampleRate(double sampleRate) { currentSampleRate = sampleRate; }
@@ -145,6 +168,11 @@ private:
     
     // Clean up old exported MIDI files (called on startup)
     void cleanupOldExports();
+
+    void rebuildEffectiveEventsNow(int itemIndex);
+    const std::vector<Groove::MidiEvent>& getEffectiveEventsForItemUnlocked(int itemIndex) const;
+    juce::MidiFile buildCompositionMidiFile() const;
+    bool writeMidiFile(const juce::MidiFile& midiFile, const juce::File& destination) const;
     
     juce::File groovesPath;
     std::vector<GrooveCategory> categories;
@@ -166,6 +194,7 @@ private:
     std::vector<ComposerItem> composerItems;
     bool composerPlaying = false;
     double composerStartPpq = 0.0;
+    int selectedComposerItemIndex = -1;
     
     double currentSampleRate = 44100.0;
     

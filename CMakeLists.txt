@@ -9,7 +9,7 @@ include(FetchContent)
 FetchContent_Declare(
     JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG 7.0.9
+    GIT_TAG 8.0.9
 )
 FetchContent_MakeAvailable(JUCE)
 
@@ -36,6 +36,7 @@ target_sources(jdrummer
         Source/PluginEditor.cpp
         Source/SoundFontManager.cpp
         Source/GrooveManager.cpp
+        Source/GroovePatternDensity.cpp
         Source/AudioAnalyzer.cpp
         Source/Components/KitSelector.cpp
         Source/Components/DrumPad.cpp
@@ -43,6 +44,7 @@ target_sources(jdrummer
         Source/Components/PadControls.cpp
         Source/Components/GrooveBrowser.cpp
         Source/Components/GrooveComposer.cpp
+        Source/Components/GrooveInstrumentStrip.cpp
         Source/Components/GroovesPanel.cpp
         Source/Components/BandmatePanel.cpp
         libs/minibpm/src/MiniBpm.cpp
@@ -117,6 +119,35 @@ add_custom_command(TARGET jdrummer_VST3 POST_BUILD
         "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/VST3/jdrummer.vst3/Contents/Resources/Grooves"
     COMMENT "Copying Grooves to VST3 bundle"
 )
+
+if(APPLE)
+    # Copy soundfonts to AU bundle Resources folder (after build)
+    add_custom_command(TARGET jdrummer_AU POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/AU/jdrummer.component/Contents/Resources/soundfonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/soundfonts"
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/AU/jdrummer.component/Contents/Resources/soundfonts"
+        COMMENT "Copying soundfonts to AU bundle"
+    )
+
+    # Copy Grooves to AU bundle Resources folder (after build)
+    add_custom_command(TARGET jdrummer_AU POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/AU/jdrummer.component/Contents/Resources/Grooves"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/Grooves"
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/AU/jdrummer.component/Contents/Resources/Grooves"
+        COMMENT "Copying Grooves to AU bundle"
+    )
+
+    add_custom_command(TARGET jdrummer_AU POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/jdrummer_artefacts/$<CONFIG>/AU/jdrummer.component"
+            "$ENV{HOME}/Library/Audio/Plug-Ins/Components/jdrummer.component"
+        COMMENT "Re-installing AU bundle with embedded assets"
+    )
+endif()
 
 # Installation targets for distribution
 # Determine platform-specific install location
