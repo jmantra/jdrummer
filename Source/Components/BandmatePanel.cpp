@@ -16,14 +16,14 @@ BandmatePanel::BandmatePanel()
 
     // Title
     titleLabel.setText("GROOVE MATCHER", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(18.0f, juce::Font::bold));
+    titleLabel.setFont(juce::Font(juce::FontOptions(18.0f, juce::Font::bold)));
     titleLabel.setColour(juce::Label::textColourId, accentColour);
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);
 
     // Drop zone label
     dropZoneLabel.setText("Drop an audio file here\nor click Browse", juce::dontSendNotification);
-    dropZoneLabel.setFont(juce::Font(14.0f));
+    dropZoneLabel.setFont(juce::Font(juce::FontOptions(14.0f)));
     dropZoneLabel.setColour(juce::Label::textColourId, dimTextColour);
     dropZoneLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(dropZoneLabel);
@@ -91,7 +91,7 @@ BandmatePanel::BandmatePanel()
     addAndMakeVisible(clearButton);
 
     // File name label
-    fileNameLabel.setFont(juce::Font(13.0f, juce::Font::bold));
+    fileNameLabel.setFont(juce::Font(juce::FontOptions(13.0f, juce::Font::bold)));
     fileNameLabel.setColour(juce::Label::textColourId, textColour);
     fileNameLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(fileNameLabel);
@@ -120,7 +120,7 @@ BandmatePanel::BandmatePanel()
     addAndMakeVisible(useCustomBpmButton);
 
     // Status label
-    statusLabel.setFont(juce::Font(11.0f));
+    statusLabel.setFont(juce::Font(juce::FontOptions(11.0f)));
     statusLabel.setColour(juce::Label::textColourId, dimTextColour);
     statusLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(statusLabel);
@@ -171,7 +171,7 @@ BandmatePanel::BandmatePanel()
 
     // Matches label
     matchesLabel.setText("MATCHING GROOVES", juce::dontSendNotification);
-    matchesLabel.setFont(juce::Font(12.0f, juce::Font::bold));
+    matchesLabel.setFont(juce::Font(juce::FontOptions(12.0f, juce::Font::bold)));
     matchesLabel.setColour(juce::Label::textColourId, textColour);
     addAndMakeVisible(matchesLabel);
 
@@ -185,7 +185,7 @@ BandmatePanel::BandmatePanel()
 
     // Bar count label
     barCountLabel.setText("Bars:", juce::dontSendNotification);
-    barCountLabel.setFont(juce::Font(12.0f));
+    barCountLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     barCountLabel.setColour(juce::Label::textColourId, dimTextColour);
     barCountLabel.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(barCountLabel);
@@ -1113,18 +1113,18 @@ void BandmatePanel::MatchesListModel::paintListBoxItem(int rowNumber, juce::Grap
                                match.matchScore > 25 ? juce::Colour(0xFFFFFF00) :
                                panel.accentColour;
     g.setColour(scoreColour);
-    g.setFont(juce::Font(11.0f, juce::Font::bold));
+    g.setFont(juce::Font(juce::FontOptions(11.0f, juce::Font::bold)));
     g.drawText(juce::String(static_cast<int>(match.matchScore)) + "%",
                8, 0, 35, height, juce::Justification::centredLeft);
 
     // Category
     g.setColour(panel.dimTextColour);
-    g.setFont(juce::Font(10.0f));
+    g.setFont(juce::Font(juce::FontOptions(10.0f)));
     g.drawText(match.categoryName, 50, 0, 100, height, juce::Justification::centredLeft);
 
     // Groove name
     g.setColour(rowIsSelected ? panel.textColour : panel.dimTextColour);
-    g.setFont(juce::Font(12.0f));
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
     g.drawText(match.grooveName, 155, 0, width - 160, height, juce::Justification::centredLeft);
 }
 

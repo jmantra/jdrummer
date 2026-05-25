@@ -12,7 +12,7 @@ GrooveComposer::GrooveComposer()
 {
     // Title label
     titleLabel.setText("COMPOSER", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(10.0f, juce::Font::bold));
+    titleLabel.setFont(juce::Font(juce::FontOptions(10.0f, juce::Font::bold)));
     titleLabel.setColour(juce::Label::textColourId, textColour);
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);
@@ -20,7 +20,7 @@ GrooveComposer::GrooveComposer()
     // Hint label
     hintLabel.setText("Drag and drop grooves here to build your composition",
                       juce::dontSendNotification);
-    hintLabel.setFont(juce::Font(11.0f));
+    hintLabel.setFont(juce::Font(juce::FontOptions(11.0f)));
     hintLabel.setColour(juce::Label::textColourId, dimTextColour);
     hintLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(hintLabel);
@@ -278,7 +278,7 @@ void GrooveComposer::paint(juce::Graphics& g)
                 g.fillRect(textArea.toFloat());
 
                 g.setColour(textColour);
-                g.setFont(juce::Font(9.0f));
+                g.setFont(juce::Font(juce::FontOptions(9.0f)));
                 g.drawText(displayName, textArea.reduced(2, 0),
                           juce::Justification::centredLeft, true);
             }

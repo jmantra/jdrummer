@@ -46,7 +46,7 @@ GroovesPanel::GroovesPanel()
 
     // BPM label (will be updated from DAW)
     bpmLabel.setText("BPM: ---", juce::dontSendNotification);
-    bpmLabel.setFont(juce::Font(12.0f));
+    bpmLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     bpmLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
     bpmLabel.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(bpmLabel);

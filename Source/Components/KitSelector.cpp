@@ -4,7 +4,7 @@ KitSelector::KitSelector()
 {
     // Title label
     titleLabel.setText("Drum Kit", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(14.0f, juce::Font::bold));
+    titleLabel.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     titleLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFCCCCCC));
     addAndMakeVisible(titleLabel);
 
@@ -30,7 +30,7 @@ KitSelector::KitSelector()
 
     // Preset label
     presetLabel.setText("Preset:", juce::dontSendNotification);
-    presetLabel.setFont(juce::Font(12.0f));
+    presetLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     presetLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF999999));
     addAndMakeVisible(presetLabel);
 

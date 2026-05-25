@@ -74,14 +74,14 @@ GrooveBrowser::GrooveBrowser()
 {
     // Category label
     categoryLabel.setText("STYLE", juce::dontSendNotification);
-    categoryLabel.setFont(juce::Font(14.0f, juce::Font::bold));
+    categoryLabel.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     categoryLabel.setColour(juce::Label::textColourId, textColour);
     categoryLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(categoryLabel);
 
     // Groove label
     grooveLabel.setText("GROOVES", juce::dontSendNotification);
-    grooveLabel.setFont(juce::Font(14.0f, juce::Font::bold));
+    grooveLabel.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     grooveLabel.setColour(juce::Label::textColourId, textColour);
     grooveLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(grooveLabel);
@@ -106,7 +106,7 @@ GrooveBrowser::GrooveBrowser()
 
     // Bar count label
     barCountLabel.setText("Bars:", juce::dontSendNotification);
-    barCountLabel.setFont(juce::Font(12.0f));
+    barCountLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     barCountLabel.setColour(juce::Label::textColourId, dimTextColour);
     barCountLabel.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(barCountLabel);
@@ -253,7 +253,7 @@ void GrooveBrowser::paintListBoxItem(int rowNumber, juce::Graphics& g, int width
 
     // Text
     g.setColour(rowIsSelected ? textColour : dimTextColour);
-    g.setFont(juce::Font(13.0f));
+    g.setFont(juce::Font(juce::FontOptions(13.0f)));
     g.drawText(categories[rowNumber].name, 28, 0, width - 32, height, juce::Justification::centredLeft);
 }
 
@@ -369,7 +369,7 @@ void GrooveBrowser::GrooveListModel::paintListBoxItem(int rowNumber, juce::Graph
 
     // Text
     g.setColour(rowIsSelected ? browser.textColour : browser.dimTextColour);
-    g.setFont(juce::Font(12.0f));
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
     g.drawText(grooves[rowNumber].name, 24, 0, width - 28, height, juce::Justification::centredLeft);
 }
 

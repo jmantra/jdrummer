@@ -23,7 +23,7 @@ void GrooveInstrumentStrip::InstrumentIcon::paint(juce::Graphics& g)
         g.setColour(juce::Colour(0xFF666666));
         g.drawRoundedRectangle(bounds, cornerRadius, 1.0f);
         g.setColour(presentInGroove ? juce::Colour(0xFFCCCCCC) : juce::Colour(0xFFAAAAAA));
-        g.setFont(juce::Font(9.0f, juce::Font::bold));
+        g.setFont(juce::Font(juce::FontOptions(9.0f, juce::Font::bold)));
         g.drawText(getInstrumentLabel(instrument), bounds, juce::Justification::centred);
         return;
     }
@@ -43,7 +43,7 @@ void GrooveInstrumentStrip::InstrumentIcon::paint(juce::Graphics& g)
         g.setColour(presentInGroove ? juce::Colour(0xFFCCCCCC) : juce::Colour(0xFFAAAAAA));
     }
 
-    g.setFont(juce::Font(9.0f, juce::Font::bold));
+    g.setFont(juce::Font(juce::FontOptions(9.0f, juce::Font::bold)));
     g.drawText(getInstrumentLabel(instrument), bounds, juce::Justification::centred);
 
     if (enabled)
@@ -159,7 +159,7 @@ GrooveInstrumentStrip::InstrumentRow::InstrumentRow(int rowIndex)
     : row(rowIndex)
 {
     rowLabel.setText(getInstrumentRowLabel(rowIndex), juce::dontSendNotification);
-    rowLabel.setFont(juce::Font(8.0f));
+    rowLabel.setFont(juce::Font(juce::FontOptions(8.0f)));
     rowLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF666666));
     rowLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(rowLabel);
@@ -242,7 +242,7 @@ void GrooveInstrumentStrip::InstrumentRow::setInstrumentPresent(DrumInstrument i
 GrooveInstrumentStrip::GrooveInstrumentStrip()
 {
     hintLabel.setText("Select a block to add instruments", juce::dontSendNotification);
-    hintLabel.setFont(juce::Font(8.0f));
+    hintLabel.setFont(juce::Font(juce::FontOptions(8.0f)));
     hintLabel.setColour(juce::Label::textColourId, dimTextColour);
     hintLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(hintLabel);

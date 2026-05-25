@@ -56,14 +56,14 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
         useful during initialization when callbacks might not be ready.
     */
     titleLabel.setText("jdrummer", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(28.0f, juce::Font::bold));
+    titleLabel.setFont(juce::Font(juce::FontOptions(28.0f, juce::Font::bold)));
     titleLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF00BFFF));
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);  // Add to component tree and make visible
 
     // Kit label
     kitLabel.setText("Kit:", juce::dontSendNotification);
-    kitLabel.setFont(juce::Font(14.0f, juce::Font::bold));
+    kitLabel.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     kitLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFCCCCCC));
     addAndMakeVisible(kitLabel);
 
@@ -104,7 +104,7 @@ JdrummerAudioProcessorEditor::JdrummerAudioProcessorEditor(JdrummerAudioProcesso
 
     // Preset label
     presetLabel.setText("Preset:", juce::dontSendNotification);
-    presetLabel.setFont(juce::Font(12.0f));
+    presetLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     presetLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF999999));
     addAndMakeVisible(presetLabel);
 

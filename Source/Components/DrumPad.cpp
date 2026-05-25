@@ -130,13 +130,13 @@ void DrumPad::paint(juce::Graphics& g)
         Draw the pad name centered in the pad.
     */
     g.setColour(juce::Colours::white.withAlpha(0.95f));
-    g.setFont(juce::Font(12.0f, juce::Font::bold));
+    g.setFont(juce::Font(juce::FontOptions(12.0f, juce::Font::bold)));
     // drawText with Justification::centred centers the text in the bounds
     g.drawText(padName, bounds, juce::Justification::centred);
 
     // Draw the MIDI note number in the corner (smaller, dimmer)
     g.setColour(juce::Colours::white.withAlpha(0.5f));
-    g.setFont(juce::Font(9.0f));
+    g.setFont(juce::Font(juce::FontOptions(9.0f)));
     g.drawText(juce::String(midiNote), bounds.reduced(5.0f), juce::Justification::bottomRight);
 }
 

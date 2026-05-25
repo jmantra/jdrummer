@@ -11,14 +11,14 @@ PadControls::PadControls()
 {
     // Title label showing selected pad name
     titleLabel.setText("Kick", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(16.0f, juce::Font::bold));
+    titleLabel.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold)));
     titleLabel.setColour(juce::Label::textColourId, accentColour);
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);
 
     // Volume label
     volumeLabel.setText("Volume", juce::dontSendNotification);
-    volumeLabel.setFont(juce::Font(12.0f));
+    volumeLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     volumeLabel.setColour(juce::Label::textColourId, textColour);
     volumeLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(volumeLabel);
@@ -38,7 +38,7 @@ PadControls::PadControls()
 
     // Pan label
     panLabel.setText("Pan", juce::dontSendNotification);
-    panLabel.setFont(juce::Font(12.0f));
+    panLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     panLabel.setColour(juce::Label::textColourId, textColour);
     panLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(panLabel);
